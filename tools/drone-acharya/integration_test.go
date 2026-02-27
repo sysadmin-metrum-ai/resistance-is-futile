@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/metrum-ai/drone-acharya/io"
-	"github.com/metrum-ai/drone-acharya/trilat"
+	"github.com/sysadmin-metrum-ai/resistance-is-futile/tools/drone-acharya/io"
+	"github.com/sysadmin-metrum-ai/resistance-is-futile/tools/drone-acharya/trilat"
 )
 
 // Integration: template output is valid; filled CSV round-trips through solve.

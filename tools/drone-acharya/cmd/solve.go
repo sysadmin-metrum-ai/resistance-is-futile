@@ -6,8 +6,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/metrum-ai/drone-acharya/io"
-	"github.com/metrum-ai/drone-acharya/trilat"
+	"github.com/sysadmin-metrum-ai/resistance-is-futile/tools/drone-acharya/io"
+	"github.com/sysadmin-metrum-ai/resistance-is-futile/tools/drone-acharya/trilat"
 	"github.com/spf13/cobra"
 )
 

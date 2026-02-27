@@ -5,7 +5,13 @@ CLI tool that computes 3D coordinates for Loco positioning nodes from pairwise d
 
 ## Installation
 ```bash
-go install github.com/metrum-ai/drone-acharya@latest
+go install github.com/sysadmin-metrum-ai/resistance-is-futile/tools/drone-acharya@latest
+```
+
+Or build from source:
+```bash
+cd tools/drone-acharya
+go install .
 ```
 
 ## Usage

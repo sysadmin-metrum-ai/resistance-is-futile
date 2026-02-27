@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/metrum-ai/drone-acharya/cmd"
+	"github.com/sysadmin-metrum-ai/resistance-is-futile/tools/drone-acharya/cmd"
 	"github.com/spf13/cobra"
 )
 
