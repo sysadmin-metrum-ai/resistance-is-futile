@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/metrum-ai/drone-acharya/io"
+	"github.com/sysadmin-metrum-ai/resistance-is-futile/tools/drone-acharya/io"
 	"github.com/spf13/cobra"
 )
 

@@ -1,4 +1,4 @@
-module github.com/metrum-ai/drone-acharya
+module github.com/sysadmin-metrum-ai/resistance-is-futile/tools/drone-acharya
 
 go 1.25.0
 
