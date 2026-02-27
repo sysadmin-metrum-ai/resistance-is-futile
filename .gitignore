@@ -32,3 +32,6 @@ Thumbs.db
 # Project specific
 logs/
 *.log
+
+# drone-acharya
+tools/drone-acharya/drone-acharya
