@@ -67,8 +67,8 @@ export function LLMTerminal({
       cursorBlink: true,
       cursorStyle: 'block',
       scrollback: scrollback,
-      readOnly: readOnly,
       convertEol: true, // Handle newlines correctly
+      disableStdin: readOnly, // Disable input when readOnly
     });
 
     terminal.open(terminalRef.current);

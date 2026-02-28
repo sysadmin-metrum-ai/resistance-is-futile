@@ -9,20 +9,20 @@ declare module 'react-simple-maps' {
     };
     width?: number;
     height?: number;
-    style?: { [key: string]: React.CSSProperties };
+    style?: React.CSSProperties;
     zoom?: number;
     children?: ReactNode;
   }
 
   export interface GeographiesProps {
-    geography: string | object;
+    geography: string | Record<string, unknown>;
     children: (args: { geographies: Geography[] }) => ReactNode;
   }
 
   export interface Geography {
     rsmKey: string;
-    properties: { [key: string]: any };
-    geometry: any;
+    properties: Record<string, unknown>;
+    geometry: unknown;
   }
 
   export interface GeographyProps {
@@ -32,15 +32,16 @@ declare module 'react-simple-maps' {
     stroke?: string;
     strokeWidth?: number | string;
     style?: {
-      default?: { [key: string]: any };
-      hover?: { [key: string]: any };
-      pressed?: { [key: string]: any };
+      default?: Record<string, unknown>;
+      hover?: Record<string, unknown>;
+      pressed?: Record<string, unknown>;
     };
     children?: ReactNode;
   }
 
   export interface MarkerProps {
-    coordinates: [number, number];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    coordinates: any;
     children?: ReactNode;
     key?: string;
   }

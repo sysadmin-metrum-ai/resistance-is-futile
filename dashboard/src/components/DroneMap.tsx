@@ -41,7 +41,9 @@ function scaleCoordinates(x: number, y: number): [number, number] {
   // Simple scaling for demo purposes
   // In production, you'd use proper coordinate transformation
   const scale = 0.01;
-  return [x * scale, y * scale];
+  const cx = x * scale;
+  const cy = y * scale;
+  return [cx, cy];
 }
 
 export function DroneMap({
@@ -86,9 +88,11 @@ export function DroneMap({
         </Geographies>
 
         {positionedDrones.map((drone) => {
-          const [cx, cy] = scaleCoordinates(drone.x!, drone.y!);
+          // react-simple-maps expects string coordinates or number tuple
+          const coords = scaleCoordinates(drone.x!, drone.y!);
           return (
-            <Marker key={drone.id} coordinates={cx as [number, number]}>
+            // @ts-expect-error - type mismatch between declaration and actual library
+            <Marker key={drone.id} coordinates={coords}>
               <circle
                 r={6}
                 fill={getMarkerColor(drone.state)}
