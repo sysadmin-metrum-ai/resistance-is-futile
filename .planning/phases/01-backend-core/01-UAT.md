@@ -1,9 +1,9 @@
 ---
-status: complete
+status: diagnosed
 phase: 01-backend-core
 source: 01-SUMMARY.md, 02-SUMMARY.md, 03-SUMMARY.md
 started: 2026-02-28T14:30:00Z
-updated: 2026-02-28T14:35:00Z
+updated: 2026-02-28T14:40:00Z
 ---
 
 ## Current Test
@@ -67,9 +67,10 @@ skipped: 5
 ## Gaps
 
 - truth: "Tests are self-contained and runnable via simple make targets"
-  status: failed
+  status: resolved
   reason: "User reported: Tests must be self-contained (pytest and others). If servers need to be started, dependencies installed, it should all be a simple 'makefile' based set of targets!"
   severity: major
   test: 3
   artifacts: []
   missing: []
+  resolution: "Created Makefile with targets: make install, make services-up, make test-integration. Created docker-compose.yml for Redis. Created pytest integration tests."
