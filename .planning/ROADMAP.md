@@ -57,7 +57,7 @@
 6. Images stored and accessible via API after mission
 7. LED indicates drone state (green=ready, yellow=busy, red=error)
 
-**Plans:** 6/6 complete (Dashboard UI, Camera, SSE, Images, LED)
+**Plans:** 5/5 plans complete
 
 ---
 
@@ -135,7 +135,7 @@
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Backend Core | 3/3 | Complete    | 2026-02-28 |
-| 2. Dashboard & Peripherals | 6/6 | Complete | 2026-02-28 |
+| 2. Dashboard & Peripherals | 6/6 | Complete    | 2026-02-28 |
 | 3. Demo Venue Setup | 0/1 | Not started | - |
 | 4. Demo Validation | 0/1 | Not started | - |
 | 5. Demo Missions | 0/1 | Not started | - |
