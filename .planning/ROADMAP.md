@@ -135,7 +135,7 @@
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Backend Core | 3/3 | Complete    | 2026-02-28 |
-| 2. Dashboard & Peripherals | 0/1 | Not started | - |
+| 2. Dashboard & Peripherals | 1/3 | In progress | 2026-02-28 |
 | 3. Demo Venue Setup | 0/1 | Not started | - |
 | 4. Demo Validation | 0/1 | Not started | - |
 | 5. Demo Missions | 0/1 | Not started | - |
