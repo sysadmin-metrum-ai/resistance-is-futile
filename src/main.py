@@ -42,7 +42,7 @@ async def close_redis() -> None:
     """Close Redis connections on shutdown."""
     global _redis_pool
     if _redis_pool:
-        await _redis_pool.disconnect()
+        await _redis_pool.aclose()
         _redis_pool = None
 
 

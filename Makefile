@@ -56,8 +56,11 @@ test:
 # Run integration tests
 test-integration: services-up
 	@echo "Running integration tests..."
+	@echo "Cleaning up port 8000 if needed..."
+	@-lsof -ti:8000 | xargs -r kill -9 2>/dev/null || true
+	@sleep 1
 	@echo "Starting API server in background..."
-	@(cd /home/cgadgil/src/resistance-is-futile && uv run uvicorn src.main:app --host 0.0.0.0 --port 8000) &
+	@cd /home/cgadgil/src/resistance-is-futile && uv run uvicorn src.main:app --host 0.0.0.0 --port 8000 &
 	@SERVER_PID=$$!
 	@echo "Waiting for API server to start..."
 	@sleep 3
