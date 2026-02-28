@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: unknown
-last_updated: "2026-02-28T17:00:02.536Z"
+status: in_progress
+last_updated: "2026-02-28T19:35:00.000Z"
 progress:
-  total_phases: 3
-  completed_phases: 2
-  total_plans: 13
-  completed_plans: 10
+  total_phases: 8
+  completed_phases: 3
+  total_plans: 16
+  completed_plans: 11
 ---
 
 # State: Drone Swarm Agent Integration
@@ -17,7 +17,7 @@ progress:
 
 **Core Value:** Enable AI agents to dispatch physical drone missions for datacenter inspection — bridging the gap between software monitoring and physical reality.
 
-**Current Focus:** Phase 3 execution (Demo Venue Setup)
+**Current Focus:** Phase 4 execution (Drone Control API)
 
 ---
 
@@ -25,10 +25,10 @@ progress:
 
 | Item | Value |
 |------|-------|
-| **Phase** | 03-demo-venue-setup |
+| **Phase** | 04-drone-control-api |
 | **Plan** | 01 |
 | **Status** | Completed |
-| **Progress** | [==========] 4/4 tasks (100%) |
+| **Progress** | [==========] 2/2 tasks (100%) |
 
 ---
 
@@ -39,6 +39,7 @@ progress:
 | 1 - Backend Core | Agent API, Fleet Management, Mission Control, Safety | 15 | Plans 01-03 complete |
 | 2 - Dashboard & Peripherals | Web Dashboard, Camera, LED Status | 7 | All plans complete |
 | 3 - Demo Venue Setup | Site survey, drone-acharya, anchor programming | 3 | Plan 01 complete |
+| 4 - Drone Control API | Takeoff/land/go_to/state endpoints | Gap | Plan 01 complete |
 
 ---
 
@@ -46,10 +47,10 @@ progress:
 
 | Metric | Current | Target |
 |--------|---------|--------|
-| Requirements mapped | 22/22 | 22/22 |
-| Phases defined | 6 | 6 |
+| Requirements mapped | 25/25 | 25/25 |
+| Phases defined | 8 | 8 |
 | Coverage | 100% | 100% |
-| Plans completed | 10/14 | - |
+| Plans completed | 11/16 | - |
 
 ---
 
@@ -69,6 +70,7 @@ progress:
 - **Event emission:** Best-effort - failures don't block main operations
 - **Venue setup:** Used cflib for LPP anchor programming (cfloader limited to firmware OTA)
 - **Verification:** Reuses existing Phase 1/2 mission API endpoints
+- **Drone control:** Added four new endpoints (takeoff, land, go_to, state) using MissionQueue for Redis state
 
 ### Dependencies Identified
 - API depends on Fleet + Mission + Safety
@@ -77,6 +79,7 @@ progress:
 - Dashboard Plan 01 establishes foundation for Plans 02-03
 - Phase 3 (Venue Setup) depends on working drone control from Phase 2
 - push-anchors.py requires cflib and Crazyradio hardware
+- Phase 4 adds drone direct control endpoints for verify-position.py
 
 ### Research Notes
 - Recommended stack: FastAPI (backend), React (dashboard), PostgreSQL + Redis (state)
@@ -88,9 +91,9 @@ progress:
 
 ## Session Continuity
 
-**Last action:** Completed Phase 3 Plan 1 - site survey docs, anchor programming script, verification script
+**Last action:** Completed Phase 4 Plan 1 - added four drone control endpoints, fixed verify-position.py API paths
 
-**Next action:** Ready for Phase 3 Plan 2 or additional venue setup tasks
+**Next action:** Ready for Phase 4 Plan 2 or subsequent phases
 
 **Blockers:** None
 
@@ -106,7 +109,8 @@ progress:
 | Phase 2 planning | 2026-02-28 | Complete |
 | Phase 2 implementation | 2026-02-28 | Complete |
 | Phase 3 Plan 01 | 2026-02-28 | Complete |
-| Phase 3 implementation | TBD | - |
+| Phase 4 Plan 01 | 2026-02-28 | Complete |
+| Phase 4 implementation | TBD | - |
 
 ---
 
