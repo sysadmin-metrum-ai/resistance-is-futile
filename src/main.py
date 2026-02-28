@@ -12,6 +12,7 @@ from src.core.config import get_settings
 from src.api.routes.missions import router as missions_router
 from src.api.routes.drones import router as drones_router
 from src.api.routes.safety import router as safety_router
+from src.api.routes.events import router as events_router
 
 
 # Global Redis connection
@@ -91,6 +92,11 @@ app.include_router(
     safety_router,
     prefix="/safety",
     tags=["safety"]
+)
+app.include_router(
+    events_router,
+    prefix="",
+    tags=["events"]
 )
 
 
