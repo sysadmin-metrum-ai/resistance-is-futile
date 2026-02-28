@@ -11,6 +11,7 @@ import uuid
 from src.core.config import Settings, get_settings
 from src.core.postgrest import PostgRESTClient
 from src.services.drone_manager import DroneManager
+from src.services.event_broadcaster import get_broadcaster
 from src.services.mission_queue import MissionQueue
 from src.services.mission_cancellation import (
     cancel_mission,
@@ -180,6 +181,20 @@ async def submit_mission(
         "callback_url": mission.callback_url,
     })
 
+    # Emit mission created event
+    try:
+        broadcaster = await get_broadcaster()
+        await broadcaster.publish(
+            broadcaster.CHANNEL_MISSION_UPDATES,
+            {
+                "type": "created",
+                "mission_id": mission_id,
+                "drone_id": assigned_drone_id,
+            }
+        )
+    except Exception:
+        pass  # Event emission is best-effort
+
     # Update drone state to busy
     await drone_manager.update_drone_state(assigned_drone_id, "busy")
 
@@ -256,6 +271,19 @@ async def cancel_mission_endpoint(
     # Attempt cancellation
     success = await cancel_mission(mission_id)
     if success:
+        # Emit mission cancelled event
+        try:
+            broadcaster = await get_broadcaster()
+            await broadcaster.publish(
+                broadcaster.CHANNEL_MISSION_UPDATES,
+                {
+                    "type": "cancelled",
+                    "mission_id": mission_id,
+                }
+            )
+        except Exception:
+            pass  # Event emission is best-effort
+
         return CancelResponse(mission_id=mission_id, status="cancelled")
     else:
         raise HTTPException(

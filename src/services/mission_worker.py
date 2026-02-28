@@ -11,6 +11,7 @@ from typing import Optional
 from src.core.config import Settings, get_settings
 from src.core.postgrest import PostgRESTClient
 from src.services.drone_manager import DroneManager, DroneState
+from src.services.event_broadcaster import get_broadcaster
 from src.services.flight_controller import FlightController
 from src.services.mission_queue import MissionQueue
 
@@ -179,8 +180,31 @@ class MissionWorker:
 
         try:
             await postgrest.patch(f"/missions?id=eq.{mission_id}", update_data)
+
+            # Emit mission update event
+            await self._emit_mission_event(mission_id, status, error)
         except Exception as e:
             logger.error(f"Failed to update mission {mission_id}: {e}")
+
+    async def _emit_mission_event(
+        self, mission_id: str, status: str, error: Optional[str] = None
+    ) -> None:
+        """Emit a mission update event."""
+        try:
+            broadcaster = await get_broadcaster()
+            event_data = {
+                "type": status,
+                "mission_id": mission_id,
+            }
+            if error:
+                event_data["error"] = error
+            await broadcaster.publish(
+                broadcaster.CHANNEL_MISSION_UPDATES,
+                event_data
+            )
+        except Exception:
+            # Event emission is best-effort, don't fail the main operation
+            pass
 
     async def _send_callback(self, callback_url: str, mission_id: str, result) -> None:
         """Send callback notification when mission completes."""
