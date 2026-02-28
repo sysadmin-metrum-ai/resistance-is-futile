@@ -3,7 +3,7 @@
 ## Phases
 
 - [x] **Phase 1: Backend Core** — Agent API, Fleet Management, Mission Control, Safety Systems (completed 2026-02-28)
-- [ ] **Phase 2: Dashboard & Peripherals** — Web Dashboard, Camera Capture, LED Status
+- [x] **Phase 2: Dashboard & Peripherals** — Web Dashboard, Camera Capture, LED Status (completed 2026-02-28)
 - [ ] **Phase 3: Demo Venue Setup** — Site survey, drone-acharya positioning, node programming
 - [ ] **Phase 4: Demo Validation** — Pre-flight tests, mission validation, system health check
 - [ ] **Phase 5: Demo Missions** — Pattern flights, point-to-point, agent-triggered scenarios
@@ -135,7 +135,7 @@
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Backend Core | 3/3 | Complete    | 2026-02-28 |
-| 2. Dashboard & Peripherals | 2/3 | In progress | 2026-02-28 |
+| 2. Dashboard & Peripherals | 3/3 | Complete | 2026-02-28 |
 | 3. Demo Venue Setup | 0/1 | Not started | - |
 | 4. Demo Validation | 0/1 | Not started | - |
 | 5. Demo Missions | 0/1 | Not started | - |
