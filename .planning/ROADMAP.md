@@ -5,9 +5,11 @@
 - [x] **Phase 1: Backend Core** — Agent API, Fleet Management, Mission Control, Safety Systems (completed 2026-02-28)
 - [x] **Phase 2: Dashboard & Peripherals** — Web Dashboard, Camera Capture, LED Status (completed 2026-02-28)
 - [x] **Phase 3: Demo Venue Setup** — Site survey, drone-acharya positioning, node programming (completed 2026-02-28)
-- [ ] **Phase 4: Demo Validation** — Pre-flight tests, mission validation, system health check
-- [ ] **Phase 5: Demo Missions** — Pattern flights, point-to-point, agent-triggered scenarios
-- [ ] **Phase 6: Demo Booth** — Power, network, space, safety requirements
+- [ ] **Phase 4: Drone Control API** — Add takeoff/land/go_to/state endpoints for verify-position.py
+- [ ] **Phase 5: LED Fix + Dashboard Wiring** — Fix LED hardcoded URI, wire camera/LED to Dashboard
+- [ ] **Phase 6: Demo Validation** — Pre-flight tests, mission validation, system health check
+- [ ] **Phase 7: Demo Missions** — Pattern flights, point-to-point, agent-triggered scenarios
+- [ ] **Phase 8: Demo Booth** — Power, network, space, safety requirements
 
 ## Phase Details
 
@@ -78,7 +80,42 @@
 
 ---
 
-### Phase 4: Demo Validation
+### Phase 4: Drone Control API
+
+**Goal:** Add drone control endpoints (takeoff/land/go_to/state) to fix verify-position.py
+
+**Depends on:** Phase 3 (requires venue setup for testing)
+
+**Requirements:** Gap closure from v1.0 audit
+
+**Success Criteria:**
+1. POST /drones/{id}/takeoff endpoint exists
+2. POST /drones/{id}/land endpoint exists
+3. POST /drones/{id}/go_to endpoint exists
+4. GET /drones/{id}/state endpoint exists
+
+**Plans:** TBD
+
+---
+
+### Phase 5: LED Fix + Dashboard Wiring
+
+**Goal:** Fix LED hardcoded URI bug, wire camera/LED to Dashboard
+
+**Depends on:** Phase 4
+
+**Requirements:** Gap closure from v1.0 audit
+
+**Success Criteria:**
+1. LED API fetches drone URI from PostgREST
+2. Camera images accessible in Dashboard
+3. LED state controllable from Dashboard
+
+**Plans:** TBD
+
+---
+
+### Phase 6: Demo Validation
 
 **Goal:** Validate system readiness before live demo
 
