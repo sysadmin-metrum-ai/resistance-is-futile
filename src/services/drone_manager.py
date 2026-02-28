@@ -11,6 +11,7 @@ from src.core.config import Settings, get_settings
 from src.core.postgrest import PostgRESTClient
 from src.services.event_broadcaster import get_broadcaster
 from src.services.mission_queue import MissionQueue
+from src.services.led_controller import get_led_controller
 
 
 # Drone states
@@ -174,6 +175,9 @@ class DroneManager:
         # Update Redis for real-time queries
         await self.mission_queue.update_drone_status(str(drone_id), state, battery)
 
+        # Update LED to reflect new state (automatic visual feedback)
+        await self._update_led_state(drone_id, state)
+
         # Emit state change event
         await self._emit_drone_event("state_changed", {
             "id": drone_id,
@@ -194,6 +198,27 @@ class DroneManager:
             )
         except Exception:
             # Event emission is best-effort, don't fail the main operation
+            pass
+
+    async def _update_led_state(self, drone_id: int, state: str) -> None:
+        """Update LED to reflect drone state.
+
+        Automatically sets LED color based on drone state:
+        - idle -> green (ready)
+        - busy -> yellow (processing mission)
+        - offline -> blink green slowly
+        - error -> red (error condition)
+
+        Args:
+            drone_id: Drone ID
+            state: New state
+        """
+        try:
+            led_controller = await get_led_controller()
+            drone_uri = f"drone-{drone_id}"
+            await led_controller.set_state_color(drone_uri, state)
+        except Exception:
+            # LED update is best-effort, don't fail the main operation
             pass
 
 

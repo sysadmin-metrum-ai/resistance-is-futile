@@ -13,6 +13,8 @@ from src.api.routes.missions import router as missions_router
 from src.api.routes.drones import router as drones_router
 from src.api.routes.safety import router as safety_router
 from src.api.routes.events import router as events_router
+from src.api.routes.led import router as led_router
+from src.api.routes.images import router as images_router
 
 
 # Global Redis connection
@@ -97,6 +99,16 @@ app.include_router(
     events_router,
     prefix="",
     tags=["events"]
+)
+app.include_router(
+    led_router,
+    prefix="/led",
+    tags=["led"]
+)
+app.include_router(
+    images_router,
+    prefix="/images",
+    tags=["images"]
 )
 
 
