@@ -5,6 +5,7 @@ import { DashboardLayout, PageCard } from '@/components/DashboardLayout';
 import { DroneCard } from '@/components/DroneCard';
 import { DroneMap } from '@/components/DroneMap';
 import { MissionQueue } from '@/components/MissionQueue';
+import { MissionImages } from '@/components/MissionImages';
 import { LLMTerminal } from '@/components/LLMTerminal';
 import { KillSwitch } from '@/components/KillSwitch';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -21,6 +22,7 @@ import {
 export default function DashboardPage() {
   const queryClient = useQueryClient();
   const [terminalCollapsed, setTerminalCollapsed] = useState(true);
+  const [selectedMissionId, setSelectedMissionId] = useState<string | null>(null);
 
   // Fetch drones
   const { data: drones, isLoading: dronesLoading } = useQuery({
@@ -51,6 +53,10 @@ export default function DashboardPage() {
 
   const handleCancelMission = (missionId: string) => {
     cancelMissionMutation.mutate(missionId);
+  };
+
+  const handleViewImages = (missionId: string) => {
+    setSelectedMissionId(missionId);
   };
 
   // Filter drones by state
@@ -118,6 +124,9 @@ export default function DashboardPage() {
             <TabsList className="w-full">
               <TabsTrigger value="map" className="flex-1">Map</TabsTrigger>
               <TabsTrigger value="list" className="flex-1">List</TabsTrigger>
+              <TabsTrigger value="images" className="flex-1" disabled={!selectedMissionId}>
+                Images
+              </TabsTrigger>
             </TabsList>
             <TabsContent value="map">
               <PageCard title="Fleet Map" description="Drone positions">
@@ -164,6 +173,20 @@ export default function DashboardPage() {
                 )}
               </PageCard>
             </TabsContent>
+            <TabsContent value="images">
+              {selectedMissionId ? (
+                <MissionImages
+                  missionId={selectedMissionId}
+                  onClose={() => setSelectedMissionId(null)}
+                />
+              ) : (
+                <PageCard title="Mission Images" description="Select a mission to view images">
+                  <div className="py-8 text-center text-muted-foreground">
+                    Select a mission from the queue to view images
+                  </div>
+                </PageCard>
+              )}
+            </TabsContent>
           </Tabs>
         </div>
 
@@ -172,6 +195,7 @@ export default function DashboardPage() {
           <MissionQueue
             missions={missions || []}
             onCancel={handleCancelMission}
+            onViewImages={handleViewImages}
             isCancelling={cancelMissionMutation.isPending ? 'cancelling' : null}
           />
         </div>

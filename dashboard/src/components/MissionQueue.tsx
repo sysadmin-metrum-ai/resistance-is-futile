@@ -1,8 +1,9 @@
 'use client';
 
-import { MapPin, Clock, XCircle, CheckCircle, Loader2, AlertCircle } from 'lucide-react';
+import { MapPin, Clock, XCircle, CheckCircle, Loader2, AlertCircle, Image } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import type { MissionDetailResponse } from '@/types';
 
 /**
@@ -11,6 +12,7 @@ import type { MissionDetailResponse } from '@/types';
 interface MissionQueueProps {
   missions: MissionDetailResponse[];
   onCancel?: (missionId: string) => void;
+  onViewImages?: (missionId: string) => void;
   isCancelling?: string | null;
 }
 
@@ -73,7 +75,7 @@ function getStatusColor(status: string): string {
   }
 }
 
-export function MissionQueue({ missions, onCancel, isCancelling }: MissionQueueProps) {
+export function MissionQueue({ missions, onCancel, onViewImages, isCancelling }: MissionQueueProps) {
   if (missions.length === 0) {
     return (
       <Card>
@@ -138,22 +140,36 @@ export function MissionQueue({ missions, onCancel, isCancelling }: MissionQueueP
                 </div>
               </div>
 
-              {/* Cancel Button */}
-              {(mission.status === 'pending' || mission.status === 'running') &&
-                onCancel && (
+              {/* Action Buttons */}
+              <div className="flex items-center gap-1">
+                {/* View Images Button */}
+                {onViewImages && (
                   <button
-                    onClick={() => onCancel(mission.mission_id)}
-                    disabled={isCancelling === mission.mission_id}
-                    className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-destructive disabled:opacity-50"
-                    title="Cancel mission"
+                    onClick={() => onViewImages(mission.mission_id)}
+                    className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                    title="View mission images"
                   >
-                    {isCancelling === mission.mission_id ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <XCircle className="h-4 w-4" />
-                    )}
+                    <Image className="h-4 w-4" />
                   </button>
                 )}
+
+                {/* Cancel Button */}
+                {(mission.status === 'pending' || mission.status === 'running') &&
+                  onCancel && (
+                    <button
+                      onClick={() => onCancel(mission.mission_id)}
+                      disabled={isCancelling === mission.mission_id}
+                      className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-destructive disabled:opacity-50"
+                      title="Cancel mission"
+                    >
+                      {isCancelling === mission.mission_id ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <XCircle className="h-4 w-4" />
+                      )}
+                    </button>
+                  )}
+              </div>
             </div>
           ))}
         </div>
