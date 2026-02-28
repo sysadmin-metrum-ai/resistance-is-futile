@@ -6,7 +6,7 @@ status: in_progress
 last_updated: "2026-02-28T19:35:00.000Z"
 progress:
   total_phases: 8
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 16
   completed_plans: 11
 ---
@@ -25,10 +25,10 @@ progress:
 
 | Item | Value |
 |------|-------|
-| **Phase** | 04-drone-control-api |
+| **Phase** | 05-led-fix-dashboard-wiring |
 | **Plan** | 01 |
 | **Status** | Completed |
-| **Progress** | [==========] 2/2 tasks (100%) |
+| **Progress** | [==========] 3/3 tasks (100%) |
 
 ---
 
@@ -40,6 +40,7 @@ progress:
 | 2 - Dashboard & Peripherals | Web Dashboard, Camera, LED Status | 7 | All plans complete |
 | 3 - Demo Venue Setup | Site survey, drone-acharya, anchor programming | 3 | Plan 01 complete |
 | 4 - Drone Control API | Takeoff/land/go_to/state endpoints | Gap | Plan 01 complete |
+| 5 - LED Fix + Dashboard Wiring | Fix LED URI bug, wire camera/LED to Dashboard | Gap | Plan 01 complete |
 
 ---
 
@@ -50,7 +51,7 @@ progress:
 | Requirements mapped | 25/25 | 25/25 |
 | Phases defined | 8 | 8 |
 | Coverage | 100% | 100% |
-| Plans completed | 11/16 | - |
+| Plans completed | 12/16 | - |
 
 ---
 
@@ -71,6 +72,7 @@ progress:
 - **Venue setup:** Used cflib for LPP anchor programming (cfloader limited to firmware OTA)
 - **Verification:** Reuses existing Phase 1/2 mission API endpoints
 - **Drone control:** Added four new endpoints (takeoff, land, go_to, state) using MissionQueue for Redis state
+- **LED URI bug fix:** LED API now uses DroneManager.get_drone() to fetch URI from PostgREST instead of hardcoding
 
 ### Dependencies Identified
 - API depends on Fleet + Mission + Safety
@@ -91,9 +93,9 @@ progress:
 
 ## Session Continuity
 
-**Last action:** Completed Phase 4 Plan 1 - added four drone control endpoints, fixed verify-position.py API paths
+**Last action:** Completed Phase 5 Plan 1 - fixed LED hardcoded URI bug, added camera/LED API to dashboard
 
-**Next action:** Ready for Phase 4 Plan 2 or subsequent phases
+**Next action:** Ready for Phase 5 Plan 2 or subsequent phases
 
 **Blockers:** None
 
@@ -110,6 +112,7 @@ progress:
 | Phase 2 implementation | 2026-02-28 | Complete |
 | Phase 3 Plan 01 | 2026-02-28 | Complete |
 | Phase 4 Plan 01 | 2026-02-28 | Complete |
+| Phase 5 Plan 01 | 2026-02-28 | Complete |
 | Phase 4 implementation | TBD | - |
 
 ---

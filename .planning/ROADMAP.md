@@ -6,7 +6,7 @@
 - [x] **Phase 2: Dashboard & Peripherals** — Web Dashboard, Camera Capture, LED Status (completed 2026-02-28)
 - [x] **Phase 3: Demo Venue Setup** — Site survey, drone-acharya positioning, node programming (completed 2026-02-28)
 - [x] **Phase 4: Drone Control API** — Add takeoff/land/go_to/state endpoints for verify-position.py (completed 2026-02-28)
-- [ ] **Phase 5: LED Fix + Dashboard Wiring** — Fix LED hardcoded URI, wire camera/LED to Dashboard
+- [x] **Phase 5: LED Fix + Dashboard Wiring** — Fix LED hardcoded URI, wire camera/LED to Dashboard (completed 2026-02-28)
 - [ ] **Phase 6: Demo Validation** — Pre-flight tests, mission validation, system health check
 - [ ] **Phase 7: Demo Missions** — Pattern flights, point-to-point, agent-triggered scenarios
 - [ ] **Phase 8: Demo Booth** — Power, network, space, safety requirements
@@ -111,7 +111,8 @@
 2. Camera images accessible in Dashboard
 3. LED state controllable from Dashboard
 
-**Plans:** TBD
+**Plans:**
+- [x] Plan 01: LED Fix + Dashboard Wiring (GAP-02)
 
 ---
 
