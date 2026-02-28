@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 from src.core.config import Settings, get_settings
 from src.services.led_controller import LEDController, LEDColor
+from src.services.drone_manager import DroneManager
 
 
 router = APIRouter()
@@ -40,6 +41,11 @@ class LEDResponse(BaseModel):
 async def get_led_controller() -> LEDController:
     """Get LED controller instance."""
     return LEDController()
+
+
+async def get_drone_manager() -> DroneManager:
+    """Get drone manager instance."""
+    return DroneManager()
 
 
 def verify_api_key(x_api_key: str = Header(None, alias="X-API-Key")):
