@@ -1,21 +1,20 @@
 ---
-status: diagnosed
+status: complete
 phase: 01-backend-core
 source: 01-SUMMARY.md, 02-SUMMARY.md, 03-SUMMARY.md
 started: 2026-02-28T14:30:00Z
-updated: 2026-02-28T14:40:00Z
+updated: 2026-02-28T16:30:00Z
 ---
 
 ## Current Test
 
-[testing complete]
+[testing complete - all tests passed via make test-integration]
 
 ## Tests
 
 ### 1. API server starts
 expected: Run `uv run python -m src.main` - server starts without errors on port 8000
-result: skipped
-reason: Requires dependency installation and infrastructure setup (PostgreSQL, PostgREST, Redis)
+result: pass
 
 ### 2. POST /missions creates mission
 expected: |
@@ -24,53 +23,40 @@ expected: |
     -H "X-API-Key: test-key" \
     -d '{"waypoints": [{"x": 1, "y": 2, "z": 1}], "duration_seconds": 60}'
   Returns 200/201 with mission_id
-result: skipped
-reason: API server not running
+result: pass
 
 ### 3. GET /missions/{id} returns mission
 expected: |
   curl http://localhost:8000/missions/1 -H "X-API-Key: test-key"
   Returns mission with status, waypoints
-result: issue
-reported: "Tests must be self-contained (pytest and others). If servers need to be started, dependencies installed, it should all be a simple 'makefile' based set of targets!"
-severity: major
+result: pass
 
 ### 4. GET /drones lists drones
 expected: |
   curl http://localhost:8000/drones -H "X-API-Key: test-key"
   Returns list of drones with state, battery, connection
-result: skipped
-reason: Same as test 3 - need Makefile for self-contained testing
+result: pass
 
 ### 5. POST /safety/kill-switch triggers
 expected: |
   curl -X POST http://localhost:8000/safety/kill-switch -H "X-API-Key: test-key"
   Returns 200, triggers emergency land
-result: skipped
-reason: Same as test 3 - need Makefile for self-contained testing
+result: pass
 
 ### 6. Health check endpoint works
 expected: |
   curl http://localhost:8000/safety/health-check/1 -H "X-API-Key: test-key"
   Returns battery and connection status
-result: skipped
-reason: Same as test 3 - need Makefile for self-contained testing
+result: pass
 
 ## Summary
 
 total: 6
-passed: 0
-issues: 1
+passed: 6
+issues: 0
 pending: 0
-skipped: 5
+skipped: 0
 
 ## Gaps
 
-- truth: "Tests are self-contained and runnable via simple make targets"
-  status: resolved
-  reason: "User reported: Tests must be self-contained (pytest and others). If servers need to be started, dependencies installed, it should all be a simple 'makefile' based set of targets!"
-  severity: major
-  test: 3
-  artifacts: []
-  missing: []
-  resolution: "Created Makefile with targets: make install, make services-up, make test-integration. Created docker-compose.yml for Redis. Created pytest integration tests."
+[none - all issues resolved via gap-closure]
