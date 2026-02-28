@@ -32,7 +32,7 @@
 14. Pre-flight health check validates battery and connection before takeoff
 15. Mission abort command stops current mission and returns drone to idle
 
-**Plans:** TBD
+**Plans:** 3 (Infrastructure → Fleet/Mission → API/Safety)
 
 ---
 
@@ -53,7 +53,7 @@
 6. Images stored and accessible via API after mission
 7. LED indicates drone state (green=ready, yellow=busy, red=error)
 
-**Plans:** TBD
+**Plans:** 3 (Infrastructure → Fleet/Mission → API/Safety)
 
 ---
 
