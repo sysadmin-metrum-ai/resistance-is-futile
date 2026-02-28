@@ -14,17 +14,17 @@
 
 ### Fleet Management
 
-- [ ] **FLEET-01**: System tracks available drones by URI
-- [ ] **FLEET-02**: System allocates drones to missions (one drone per mission initially)
-- [ ] **FLEET-03**: Drone state persisted (idle, busy, offline, error)
-- [ ] **FLEET-04**: Drones can be registered/removed from fleet at runtime
+- [x] **FLEET-01**: System tracks available drones by URI
+- [x] **FLEET-02**: System allocates drones to missions (one drone per mission initially)
+- [x] **FLEET-03**: Drone state persisted (idle, busy, offline, error)
+- [x] **FLEET-04**: Drones can be registered/removed from fleet at runtime
 
 ### Mission Control
 
-- [ ] **MISS-01**: Mission queue accepts and orders mission requests
-- [ ] **MISS-02**: Mission lifecycle tracked (pending, running, completed, failed, cancelled)
-- [ ] **MISS-03**: Missions can be cancelled while in queue
-- [ ] **MISS-04**: Missions execute in sequence (one at a time per drone)
+- [x] **MISS-01**: Mission queue accepts and orders mission requests
+- [x] **MISS-02**: Mission lifecycle tracked (pending, running, completed, failed, cancelled)
+- [x] **MISS-03**: Missions can be cancelled while in queue
+- [x] **MISS-04**: Missions execute in sequence (one at a time per drone)
 
 ### Safety
 
