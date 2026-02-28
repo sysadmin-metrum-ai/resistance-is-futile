@@ -64,6 +64,7 @@ async def set_led_color(
     drone_id: int,
     req: LEDSetRequest,
     led_controller: LEDController = Depends(get_led_controller),
+    drone_manager: DroneManager = Depends(get_drone_manager),
     x_api_key: str = Header(None, alias="X-API-Key"),
 ):
     """
@@ -84,9 +85,21 @@ async def set_led_color(
             detail=f"Invalid color: {req.color}. Must be green, yellow, or red."
         )
 
-    # Get drone URI from somewhere (for now, construct from ID)
-    # In a real implementation, we'd fetch from PostgREST
-    drone_uri = f"drone-{drone_id}"
+    # Get drone URI from PostgREST
+    try:
+        drone = await drone_manager.get_drone(drone_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Drone {drone_id} not found"
+        )
+
+    drone_uri = drone.get("uri")
+    if not drone_uri:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Drone {drone_id} has no URI configured"
+        )
 
     success = await led_controller.set_color(drone_uri, color)
 
@@ -103,6 +116,7 @@ async def blink_led(
     drone_id: int,
     req: LEDBlinkRequest,
     led_controller: LEDController = Depends(get_led_controller),
+    drone_manager: DroneManager = Depends(get_drone_manager),
     x_api_key: str = Header(None, alias="X-API-Key"),
 ):
     """
@@ -126,7 +140,21 @@ async def blink_led(
     # Clamp duration
     duration = max(0.5, min(req.duration, 30.0))
 
-    drone_uri = f"drone-{drone_id}"
+    # Get drone URI from PostgREST
+    try:
+        drone = await drone_manager.get_drone(drone_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Drone {drone_id} not found"
+        )
+
+    drone_uri = drone.get("uri")
+    if not drone_uri:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Drone {drone_id} has no URI configured"
+        )
 
     success = await led_controller.blink(drone_uri, color, duration)
 
@@ -142,6 +170,7 @@ async def blink_led(
 async def turn_off_led(
     drone_id: int,
     led_controller: LEDController = Depends(get_led_controller),
+    drone_manager: DroneManager = Depends(get_drone_manager),
     x_api_key: str = Header(None, alias="X-API-Key"),
 ):
     """
@@ -152,7 +181,21 @@ async def turn_off_led(
     """
     verify_api_key(x_api_key)
 
-    drone_uri = f"drone-{drone_id}"
+    # Get drone URI from PostgREST
+    try:
+        drone = await drone_manager.get_drone(drone_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Drone {drone_id} not found"
+        )
+
+    drone_uri = drone.get("uri")
+    if not drone_uri:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Drone {drone_id} has no URI configured"
+        )
 
     success = await led_controller.off(drone_uri)
 
