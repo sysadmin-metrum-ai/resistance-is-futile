@@ -36,7 +36,7 @@
 14. Pre-flight health check validates battery and connection before takeoff
 15. Mission abort command stops current mission and returns drone to idle
 
-**Plans:** 1/1 complete (Infrastructure: config, PostgREST client, Redis queue, DB schema)
+**Plans:** 2/2 complete (Plan 1: Infrastructure, Plan 2: Fleet Management & Mission Execution)
 
 ---
 
@@ -134,7 +134,7 @@
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Backend Core | 1/1 | Complete | 2026-02-28 |
+| 1. Backend Core | 2/2 | Complete | 2026-02-28 |
 | 2. Dashboard & Peripherals | 0/1 | Not started | - |
 | 3. Demo Venue Setup | 0/1 | Not started | - |
 | 4. Demo Validation | 0/1 | Not started | - |

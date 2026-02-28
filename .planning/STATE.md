@@ -4,7 +4,7 @@
 
 **Core Value:** Enable AI agents to dispatch physical drone missions for datacenter inspection — bridging the gap between software monitoring and physical reality.
 
-**Current Focus:** Roadmap creation
+**Current Focus:** Phase 1 execution (Fleet Management & Mission Execution)
 
 ---
 
@@ -13,7 +13,7 @@
 | Item | Value |
 |------|-------|
 | **Phase** | 01-backend-core |
-| **Plan** | 01 |
+| **Plan** | 02 |
 | **Status** | Completed |
 | **Progress** | [==========] 4/4 tasks (100%) |
 
@@ -23,7 +23,7 @@
 
 | Phase | Goal | Requirements | Status |
 |-------|------|--------------|--------|
-| 1 - Backend Core | Agent API, Fleet Management, Mission Control, Safety | 15 | Plan 01 complete |
+| 1 - Backend Core | Agent API, Fleet Management, Mission Control, Safety | 15 | Plans 01-02 complete |
 | 2 - Dashboard & Peripherals | Web Dashboard, Camera, LED Status | 7 | Not started |
 
 ---
@@ -46,6 +46,9 @@
 - **Hardware integration:** Camera and LED in Phase 2 (after core backend is stable)
 - **Config:** Used pydantic-settings for configuration management
 - **Async:** Used redis.asyncio and httpx.AsyncClient for async support
+- **cflib wrapping:** Used asyncio.to_thread() to wrap synchronous cflib calls
+- **Drone locking:** Used atomic Redis SETNX for per-drone mission locking
+- **Health checks:** Pre-flight checks required (battery >= 20%, connection >= 70%)
 
 ### Dependencies Identified
 - API depends on Fleet + Mission + Safety
@@ -63,17 +66,17 @@
 - [x] Analyze dependencies
 - [x] Derive phase structure
 - [x] Validate 100% coverage
-- [ ] Write ROADMAP.md
-- [ ] Write STATE.md
-- [ ] Update REQUIREMENTS.md traceability
+- [x] Write ROADMAP.md
+- [x] Write STATE.md
+- [x] Update REQUIREMENTS.md traceability
 
 ---
 
 ## Session Continuity
 
-**Last action:** Wrote ROADMAP.md with phase definitions and success criteria
+**Last action:** Completed Plan 02 - Fleet Management & Mission Execution (4 tasks)
 
-**Next action:** Write STATE.md, update REQUIREMENTS.md traceability
+**Next action:** Phase 1 remaining plans (API/Safety endpoints)
 
 **Blockers:** None
 
