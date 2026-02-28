@@ -205,6 +205,32 @@ async def submit_mission(
     )
 
 
+@router.get("", response_model=list[MissionDetailResponse])
+async def get_missions(
+    postgrest: PostgRESTClient = Depends(get_postgrest),
+    x_api_key: str = Header(None, alias="X-API-Key"),
+):
+    """List all missions."""
+    settings = get_settings()
+
+    # Validate API key
+    if settings.api_key and x_api_key != settings.api_key:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or missing API key"
+        )
+
+    try:
+        # Get all missions ordered by creation (newest first)
+        result = await postgrest.get("/missions?order=id.desc&select=*")
+        return [MissionDetailResponse(**mission) for mission in result]
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to list missions: {str(e)}"
+        )
+
+
 @router.get("/{mission_id}", response_model=MissionDetailResponse)
 async def get_mission(
     mission_id: str,

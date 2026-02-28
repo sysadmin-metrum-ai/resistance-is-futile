@@ -124,6 +124,14 @@ export async function getMission(missionId: string): Promise<MissionDetailRespon
 }
 
 /**
+ * List all missions.
+ */
+export async function getMissions(): Promise<MissionDetailResponse[]> {
+  const response = await apiClient.get<MissionDetailResponse[]>('/missions');
+  return response.data;
+}
+
+/**
  * Cancel a pending or running mission.
  */
 export async function cancelMission(missionId: string): Promise<CancelResponse> {
