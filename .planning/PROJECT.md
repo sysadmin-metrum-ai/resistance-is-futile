@@ -20,8 +20,8 @@ Enable AI agents to dispatch physical drone missions for datacenter inspection �
 ### Active
 
 - [ ] Agent API for mission dispatch (Agentfield or custom)
+- [ ] Live web dashboard for mission control and visualization
 - [ ] Camera module integration for visual feedback
-- [ ] Thermal sensing capability (if hardware available)
 - [ ] LED control for status indication
 - [ ] OTA code deployment for dynamic mission programming
 - [ ] Positioning fallback (optical flow for venue interference)
@@ -58,7 +58,7 @@ Enable AI agents to dispatch physical drone missions for datacenter inspection �
 
 - **Safety**: Drones must have kill switch and geofencing — live demo, no crashes
 - **Positioning**: UWB may be unreliable at venue — need optical flow fallback
-- **Timeline**: Dell Tech World 2026 — build reusable, demo-focused
+- **Timeline**: Dell Tech World — May 2026 — build reusable, demo-focused
 - **Hardware**: Limited to existing Crazyflies, may add brushless variants
 
 ## Key Decisions
