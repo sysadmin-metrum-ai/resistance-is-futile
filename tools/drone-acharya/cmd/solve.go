@@ -12,11 +12,16 @@ import (
 )
 
 var (
-	solveOut       string
-	solveCrazyflie bool
-	solveJSON      bool
-	solveValidate  bool
-	solvePrecision int
+	solveOut        string
+	solveCrazyflie  bool
+	solveJSON       bool
+	solveValidate   bool
+	solvePrecision  int
+	solveRotateNed  float64
+	solveOffsetX    float64
+	solveOffsetY    float64
+	solveOffsetZ    float64
+	solveZDown      bool
 )
 
 func init() {
@@ -25,6 +30,11 @@ func init() {
 	solveCmd.Flags().BoolVarP(&solveJSON, "json", "j", false, "JSON output")
 	solveCmd.Flags().BoolVarP(&solveValidate, "validate", "v", false, "Show validation table")
 	solveCmd.Flags().IntVarP(&solvePrecision, "precision", "p", 3, "Decimal places")
+	solveCmd.Flags().Float64Var(&solveRotateNed, "rotate-ned", 0, "Clockwise rotation (degrees) from X-axis to North")
+	solveCmd.Flags().Float64Var(&solveOffsetX, "offset-x", 0, "X translation (meters)")
+	solveCmd.Flags().Float64Var(&solveOffsetY, "offset-y", 0, "Y translation (meters)")
+	solveCmd.Flags().Float64Var(&solveOffsetZ, "offset-z", 0, "Z translation (meters)")
+	solveCmd.Flags().BoolVar(&solveZDown, "z-down", false, "Flip Z-axis (+Z up → +Z down for NED)")
 }
 
 var solveCmd = &cobra.Command{
@@ -84,6 +94,8 @@ func runSolve(cmd *cobra.Command, args []string) error {
 	for i, c := range coords {
 		ioCoords[i] = io.Coord{c.X, c.Y, c.Z}
 	}
+	// Apply transformation (rotation, Z-flip, translation)
+	ioCoords = io.Transform(ioCoords, solveRotateNed, solveOffsetX, solveOffsetY, solveOffsetZ, solveZDown)
 	if solveJSON {
 		valRows := make([]io.ValidationRow, len(validation))
 		for i, v := range validation {
