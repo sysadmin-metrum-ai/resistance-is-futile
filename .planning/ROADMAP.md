@@ -130,7 +130,7 @@
 2. Mission validation confirms drone can execute planned flight paths
 3. System health check reports battery, connection, positioning status
 
-**Plans:** TBD
+**Plans:** 1/1 plans complete
 
 ---
 
@@ -178,7 +178,7 @@
 | 3. Demo Venue Setup | 1/1 | Complete    | 2026-02-28 |
 | 4. Drone Control API | 1/1 | Complete    | 2026-02-28 |
 | 5. LED Fix + Dashboard Wiring | 2/2 | Complete    | 2026-02-28 |
-| 6. Demo Validation | 0/1 | Not started | - |
+| 6. Demo Validation | 1/1 | Complete    | 2026-02-28 |
 | 7. Demo Missions | 0/1 | Not started | - |
 | 8. Demo Booth | 0/1 | Not started | - |
 

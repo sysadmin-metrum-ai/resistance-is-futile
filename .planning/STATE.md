@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-02-28T21:48:50.447Z"
+last_updated: "2026-02-28T22:40:00.000Z"
 progress:
-  total_phases: 5
-  completed_phases: 3
-  total_plans: 14
-  completed_plans: 13
+  total_phases: 8
+  completed_phases: 6
+  total_plans: 16
+  completed_plans: 14
 ---
 
 # State: Drone Swarm Agent Integration
@@ -17,7 +17,7 @@ progress:
 
 **Core Value:** Enable AI agents to dispatch physical drone missions for datacenter inspection — bridging the gap between software monitoring and physical reality.
 
-**Current Focus:** Phase 4 execution (Drone Control API)
+**Current Focus:** Phase 6 completion (Demo Validation)
 
 ---
 
@@ -25,8 +25,8 @@ progress:
 
 | Item | Value |
 |------|-------|
-| **Phase** | 05-led-fix-dashboard-wiring |
-| **Plan** | 02 |
+| **Phase** | 06-demo-validation |
+| **Plan** | 01 |
 | **Status** | Completed |
 | **Progress** | [==========] 3/3 tasks (100%) |
 
@@ -41,6 +41,7 @@ progress:
 | 3 - Demo Venue Setup | Site survey, drone-acharya, anchor programming | 3 | Plan 01 complete |
 | 4 - Drone Control API | Takeoff/land/go_to/state endpoints | Gap | Plan 01 complete |
 | 5 - LED Fix + Dashboard Wiring | Fix LED URI bug, wire camera/LED to Dashboard | Gap | Plans 01-02 complete |
+| 6 - Demo Validation | Pre-flight, mission validation, health check | 3 | Plan 01 complete |
 
 ---
 
@@ -74,6 +75,10 @@ progress:
 - **Drone control:** Added four new endpoints (takeoff, land, go_to, state) using MissionQueue for Redis state
 - **LED URI bug fix:** LED API now uses DroneManager.get_drone() to fetch URI from PostgREST instead of hardcoding
 - **Dashboard wiring:** MissionImages component displays captured photos, LED controls added to DroneCard with color presets
+- **Mission validation:** POST /safety/validate-mission endpoint checks drone readiness, battery sufficiency, waypoints in range
+- **ValidationPanel:** React component orchestrating sequential validation (preflight -> health -> mission)
+- **Battery calculation:** Conservative estimate using duration/30 + 20% buffer
+- **Waypoint range:** 5m default radius for demo environment
 
 ### Dependencies Identified
 - API depends on Fleet + Mission + Safety
@@ -94,9 +99,9 @@ progress:
 
 ## Session Continuity
 
-**Last action:** Completed Phase 5 Plan 2 - wired camera images and LED controls to Dashboard UI
+**Last action:** Completed Phase 6 Plan 1 - added mission validation endpoint, frontend API, and ValidationPanel component
 
-**Next action:** Ready for subsequent phases
+**Next action:** Ready for Phase 7 - Demo Missions
 
 **Blockers:** None
 
@@ -115,7 +120,8 @@ progress:
 | Phase 4 Plan 01 | 2026-02-28 | Complete |
 | Phase 5 Plan 01 | 2026-02-28 | Complete |
 | Phase 5 Plan 02 | 2026-02-28 | Complete |
-| Phase 4 implementation | TBD | - |
+| Phase 6 Plan 01 | 2026-02-28 | Complete |
+| Phase 7 - Demo Missions | TBD | - |
 
 ---
 
