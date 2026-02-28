@@ -113,6 +113,7 @@
 
 **Plans:**
 - [x] Plan 01: LED Fix + Dashboard Wiring (GAP-02)
+- [x] Plan 02: Gap Closure - Camera/LED Dashboard Wiring (GAP-02)
 
 ---
 
@@ -133,7 +134,7 @@
 
 ---
 
-### Phase 5: Demo Missions
+### Phase 7: Demo Missions
 
 **Goal:** Execute impressive flight demonstrations at booth
 
@@ -151,7 +152,7 @@
 
 ---
 
-### Phase 6: Demo Booth
+### Phase 8: Demo Booth
 
 **Goal:** Document booth requirements for conference logistics
 
@@ -176,7 +177,7 @@
 | 2. Dashboard & Peripherals | 6/6 | Complete    | 2026-02-28 |
 | 3. Demo Venue Setup | 1/1 | Complete    | 2026-02-28 |
 | 4. Drone Control API | 1/1 | Complete    | 2026-02-28 |
-| 5. LED Fix + Dashboard Wiring | 0/1 | Not started | - |
+| 5. LED Fix + Dashboard Wiring | 2/2 | Complete    | 2026-02-28 |
 | 6. Demo Validation | 0/1 | Not started | - |
 | 7. Demo Missions | 0/1 | Not started | - |
 | 8. Demo Booth | 0/1 | Not started | - |
