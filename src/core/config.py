@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     # API authentication
     api_key: str = ""
 
+    # Camera configuration
+    image_storage_path: str = "./captures"
+    image_quality: int = 85
+
 
 # Global settings instance
 settings = Settings()
