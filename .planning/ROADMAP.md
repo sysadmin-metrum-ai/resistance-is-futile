@@ -4,7 +4,7 @@
 
 - [x] **Phase 1: Backend Core** — Agent API, Fleet Management, Mission Control, Safety Systems (completed 2026-02-28)
 - [x] **Phase 2: Dashboard & Peripherals** — Web Dashboard, Camera Capture, LED Status (completed 2026-02-28)
-- [ ] **Phase 3: Demo Venue Setup** — Site survey, drone-acharya positioning, node programming
+- [x] **Phase 3: Demo Venue Setup** — Site survey, drone-acharya positioning, node programming (completed 2026-02-28)
 - [ ] **Phase 4: Demo Validation** — Pre-flight tests, mission validation, system health check
 - [ ] **Phase 5: Demo Missions** — Pattern flights, point-to-point, agent-triggered scenarios
 - [ ] **Phase 6: Demo Booth** — Power, network, space, safety requirements
@@ -74,7 +74,7 @@
 2. drone-acharya tool generates anchor coordinates from measurements
 3. Coordinates programmatically pushed to Loco Positioning nodes via radio API
 
-**Plans:** 1/1 complete (Plan 01: Survey docs, push-anchors.py, verify-position.py, drone-acharya tests)
+**Plans:** 1/1 plans complete
 
 ---
 
