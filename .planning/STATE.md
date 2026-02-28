@@ -12,10 +12,10 @@
 
 | Item | Value |
 |------|-------|
-| **Phase** | 0 - Planning |
-| **Plan** | Roadmap creation |
-| **Status** | In progress |
-| **Progress** | [====----] 4/22 requirements (0%) |
+| **Phase** | 01-backend-core |
+| **Plan** | 01 |
+| **Status** | Completed |
+| **Progress** | [==========] 4/4 tasks (100%) |
 
 ---
 
@@ -23,7 +23,7 @@
 
 | Phase | Goal | Requirements | Status |
 |-------|------|--------------|--------|
-| 1 - Backend Core | Agent API, Fleet Management, Mission Control, Safety | 15 | Not started |
+| 1 - Backend Core | Agent API, Fleet Management, Mission Control, Safety | 15 | Plan 01 complete |
 | 2 - Dashboard & Peripherals | Web Dashboard, Camera, LED Status | 7 | Not started |
 
 ---
@@ -44,6 +44,8 @@
 - **Phase structure:** 2 phases derived from natural requirement groupings (backend core before frontend)
 - **Safety priority:** Kill switch and health checks included in Phase 1 (before API exposure)
 - **Hardware integration:** Camera and LED in Phase 2 (after core backend is stable)
+- **Config:** Used pydantic-settings for configuration management
+- **Async:** Used redis.asyncio and httpx.AsyncClient for async support
 
 ### Dependencies Identified
 - API depends on Fleet + Mission + Safety
@@ -81,12 +83,13 @@
 
 | Milestone | Target | Status |
 |-----------|--------|--------|
-| Roadmap complete | 2026-02-27 | In progress |
-| Phase 1 planning | TBD | - |
-| Phase 1 implementation | TBD | - |
+| Roadmap complete | 2026-02-27 | Complete |
+| Phase 1 planning | 2026-02-28 | Complete |
+| Phase 1 Plan 01 | 2026-02-28 | Complete |
+| Phase 1 remaining plans | TBD | - |
 | Phase 2 planning | TBD | - |
 | Phase 2 implementation | TBD | - |
 
 ---
 
-*State updated: 2026-02-27*
+*State updated: 2026-02-28*
