@@ -66,6 +66,31 @@
 - **OTA-01**: Mission code can be pushed to drones wirelessly
 - **OTA-02**: OTA updates use canary deployment (one drone first)
 
+### Demo Venue Setup
+
+- **VENUE-01**: Site survey procedure documents anchor position measurement steps
+- **VENUE-02**: drone-acharya generates anchor coordinates from measurement input
+- **VENUE-03**: Coordinates pushed to Loco Positioning nodes via radio API
+
+### Demo Validation
+
+- **VALID-01**: Pre-flight checklist validates all systems before takeoff
+- **VALID-02**: Mission validation confirms planned paths are executable
+- **VALID-03**: System health check reports battery, connection, positioning status
+
+### Demo Missions
+
+- **DEMO-01**: Drones execute pattern flights (circle, ellipse, figure-8)
+- **DEMO-02**: Drones execute point-to-point missions with hover and return
+- **DEMO-03**: Agent-triggered demo dispatches drone on inspection mission
+- **DEMO-04**: Periodic patrol demo shows scheduled autonomous missions
+
+### Demo Booth
+
+- **BOOTH-01**: Power requirements documented (NUC, radios, charging station)
+- **BOOTH-02**: Network requirements documented (WiFi, radio frequencies)
+- **BOOTH-03**: Safety requirements documented (demo area, observer, emergency)
+
 ## Out of Scope
 
 | Feature | Reason |
@@ -102,10 +127,23 @@
 | CAM-01 | Phase 2 | Pending |
 | CAM-02 | Phase 2 | Pending |
 | LED-01 | Phase 2 | Pending |
+| VENUE-01 | Phase 3 | Pending |
+| VENUE-02 | Phase 3 | Pending |
+| VENUE-03 | Phase 3 | Pending |
+| VALID-01 | Phase 4 | Pending |
+| VALID-02 | Phase 4 | Pending |
+| VALID-03 | Phase 4 | Pending |
+| DEMO-01 | Phase 5 | Pending |
+| DEMO-02 | Phase 5 | Pending |
+| DEMO-03 | Phase 5 | Pending |
+| DEMO-04 | Phase 5 | Pending |
+| BOOTH-01 | Phase 6 | Pending |
+| BOOTH-02 | Phase 6 | Pending |
+| BOOTH-03 | Phase 6 | Pending |
 
 **Coverage:**
-- v1 requirements: 25 total
-- Mapped to phases: 25
+- v1 requirements: 34 total
+- Mapped to phases: 34
 - Unmapped: 0 ✓
 
 ---

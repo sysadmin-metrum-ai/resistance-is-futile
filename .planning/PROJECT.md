@@ -28,6 +28,10 @@ Enable AI agents to dispatch physical drone missions for datacenter inspection â
 - [ ] Periodic mission scheduling
 - [ ] Issue-triggered mission dispatch
 - [ ] Human-in-the-loop override capability
+- [ ] Demo Venue Setup (site survey, drone-acharya, node programming)
+- [ ] Demo Validation (pre-flight tests, mission validation)
+- [ ] Demo Missions (pattern flights, point-to-point, agent-triggered)
+- [ ] Demo Booth Requirements (power, network, space, safety)
 
 ### Out of Scope
 
@@ -70,4 +74,4 @@ Enable AI agents to dispatch physical drone missions for datacenter inspection â
 | Auto + human override | Balance autonomy with safety for live demo | â€” Pending |
 
 ---
-*Last updated: 2026-02-27 after questioning*
+*Last updated: 2026-02-27 after adding demo phases*
