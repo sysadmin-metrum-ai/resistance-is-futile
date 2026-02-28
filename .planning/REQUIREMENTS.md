@@ -127,9 +127,9 @@
 | CAM-01 | Phase 2 | Pending |
 | CAM-02 | Phase 2 | Pending |
 | LED-01 | Phase 2 | Complete |
-| VENUE-01 | Phase 3 | Pending |
-| VENUE-02 | Phase 3 | Pending |
-| VENUE-03 | Phase 3 | Pending |
+| VENUE-01 | Phase 3 | Done |
+| VENUE-02 | Phase 3 | Done |
+| VENUE-03 | Phase 3 | Done |
 | VALID-01 | Phase 4 | Pending |
 | VALID-02 | Phase 4 | Pending |
 | VALID-03 | Phase 4 | Pending |
