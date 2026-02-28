@@ -102,6 +102,25 @@ export interface MissionAbortResponse {
   status: string;
 }
 
+export interface MissionValidationRequest {
+  drone_id: number;
+  waypoints: Waypoint[];
+  duration_seconds: number;
+}
+
+export interface MissionValidationResponse {
+  valid: boolean;
+  checks: {
+    drone_ready: boolean;
+    drone_state?: string;
+    battery_sufficient: boolean;
+    battery: number | null;
+    battery_required?: number;
+    waypoints_in_range: boolean;
+  };
+  warnings: string[];
+}
+
 // ============================================================================
 // SSE (Server-Sent Events) Types
 // ============================================================================

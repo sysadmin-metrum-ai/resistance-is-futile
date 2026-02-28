@@ -18,6 +18,8 @@ import type {
   BulkHealthCheckResponse,
   PreFlightCheckResponse,
   MissionAbortResponse,
+  MissionValidationRequest,
+  MissionValidationResponse,
   CaptureResponse,
   ImageListResponse,
   DeleteImageResponse,
@@ -186,6 +188,23 @@ export async function preFlightCheck(droneId: number): Promise<PreFlightCheckRes
  */
 export async function abortMission(missionId: string): Promise<MissionAbortResponse> {
   const response = await apiClient.post<MissionAbortResponse>(`/safety/missions/${missionId}/abort`);
+  return response.data;
+}
+
+/**
+ * Validate if a planned mission can be executed.
+ */
+export async function validateMission(
+  droneId: number,
+  waypoints: Waypoint[],
+  durationSeconds: number
+): Promise<MissionValidationResponse> {
+  const request: MissionValidationRequest = {
+    drone_id: droneId,
+    waypoints,
+    duration_seconds: durationSeconds,
+  };
+  const response = await apiClient.post<MissionValidationResponse>('/safety/validate-mission', request);
   return response.data;
 }
 
