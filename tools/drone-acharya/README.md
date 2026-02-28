@@ -3,6 +3,15 @@
 ## Overview
 CLI tool that computes 3D coordinates for Loco positioning nodes from pairwise distance measurements using trilateration.
 
+**What it does:** Given pairwise distance measurements between your LPS anchor nodes, it computes 3D coordinates using trilateration — no more manual geometry calculations.
+
+**Why this matters:** When we move from Austin → Las Vegas → convention center, we need a dead simple way to recalibrate our positioning nodes. Measure distances between nodes, plug in, get coordinates. Done.
+
+## How to use
+1. **Enter data** — Use the template (CSV/TSV) in Google Sheets or Excel: fill in measured distances (meters) in the cells.
+2. **Paste into input** — Save or copy the filled table into a file (e.g. `distances.csv`) and run `drone-acharya solve distances.csv`.
+3. **Note the coordinates** — Output is a table (or `--crazyflie` / `--json`). Use these coordinates to configure your Loco Positioning System anchors.
+
 ## Installation
 ```bash
 go install github.com/sysadmin-metrum-ai/resistance-is-futile/tools/drone-acharya@latest
