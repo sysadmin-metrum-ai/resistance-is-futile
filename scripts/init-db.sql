@@ -55,7 +55,13 @@ CREATE TRIGGER update_missions_updated_at
     EXECUTE FUNCTION update_updated_at_column();
 
 -- Grant permissions for PostgREST (anon role)
--- Note: Adjust role name based on your PostgREST configuration
+-- Note: PostgREST creates the anon role, but we create it here for initial setup
+DO $$ BEGIN
+    CREATE ROLE anon WITH LOGIN;
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
+
 GRANT SELECT, INSERT, UPDATE, DELETE ON drones TO anon;
 GRANT SELECT, INSERT, UPDATE, DELETE ON missions TO anon;
 GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO anon;

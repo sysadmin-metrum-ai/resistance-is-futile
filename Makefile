@@ -19,15 +19,32 @@ install:
 	@echo "Installing dependencies with uv..."
 	uv sync
 
-# Start services (Redis)
+# Start all services (PostgreSQL, PostgREST, Redis)
 services-up:
-	@echo "Starting Redis..."
+	@echo "Starting services..."
 	@if ! docker info > /dev/null 2>&1; then \
 		echo "Error: Docker is not running"; \
 		exit 1; \
 	fi
-	docker compose up -d redis
-	@echo "Waiting for Redis to be ready..."
+	docker compose up -d postgres postgrest redis
+	@echo "Waiting for PostgreSQL to be ready..."
+	@for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do \
+		if docker exec drone-swarm-postgres pg_isready -U droneuser -d drones > /dev/null 2>&1; then \
+			echo "PostgreSQL is ready"; \
+			break; \
+		fi; \
+		echo "Waiting for PostgreSQL..."; \
+		sleep 2; \
+	done
+	@echo "Waiting for PostgREST to be ready..."
+	@for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do \
+		if curl -s http://localhost:3000 > /dev/null 2>&1; then \
+			echo "PostgREST is ready"; \
+			break; \
+		fi; \
+		echo "Waiting for PostgREST..."; \
+		sleep 2; \
+	done
 	@for i in 1 2 3 4 5 6 7 8 9 10; do \
 		if docker compose exec -T redis redis-cli ping > /dev/null 2>&1; then \
 			echo "Redis is ready"; \
@@ -59,8 +76,13 @@ test-integration: services-up
 	@echo "Cleaning up port 8000 if needed..."
 	@-lsof -ti:8000 | xargs -r kill -9 2>/dev/null || true
 	@sleep 1
+	@echo "Waiting for PostgreSQL and PostgREST to be ready..."
+	@sleep 5
 	@echo "Starting API server in background..."
-	@cd /home/cgadgil/src/resistance-is-futile && uv run uvicorn src.main:app --host 0.0.0.0 --port 8000 &
+	@cd /home/cgadgil/src/resistance-is-futile && \
+		POSTGREST_URL=http://localhost:3000 \
+		POSTGREST_API_KEY=test-key \
+		uv run uvicorn src.main:app --host 0.0.0.0 --port 8000 &
 	@SERVER_PID=$$!
 	@echo "Waiting for API server to start..."
 	@sleep 3

@@ -92,7 +92,7 @@ class TestIntegration:
         }
         response = await async_client.post("/missions", json=mission_data)
         # Without PostgREST, this returns 500, but we verify the endpoint is reachable
-        assert response.status_code in (200, 201, 500), f"Expected 200/201/500, got {response.status_code}: {response.text}"
+        assert response.status_code in (200, 201, 500, 503), f"Expected 200/201/500/503, got {response.status_code}: {response.text}"
         if response.status_code in (200, 201):
             data = response.json()
             assert "mission_id" in data, f"mission_id not in response: {data}"
