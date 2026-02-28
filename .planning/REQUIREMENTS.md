@@ -140,7 +140,7 @@
 | BOOTH-01 | Phase 8 | Pending |
 | BOOTH-02 | Phase 8 | Pending |
 | BOOTH-03 | Phase 8 | Pending |
-| GAP-01 | Phase 4 | Pending | Drone control endpoints for verify-position |
+| GAP-01 | Phase 4 | Done | Drone control endpoints for verify-position |
 | GAP-02 | Phase 5 | Pending | LED URI fix + Dashboard wiring |
 
 **Coverage:**
