@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-02-28T22:40:00.000Z"
+last_updated: "2026-02-28T22:50:00.000Z"
 progress:
   total_phases: 8
-  completed_phases: 6
-  total_plans: 16
-  completed_plans: 14
+  completed_phases: 7
+  total_plans: 15
+  completed_plans: 15
 ---
 
 # State: Drone Swarm Agent Integration
@@ -17,7 +17,7 @@ progress:
 
 **Core Value:** Enable AI agents to dispatch physical drone missions for datacenter inspection — bridging the gap between software monitoring and physical reality.
 
-**Current Focus:** Phase 6 completion (Demo Validation)
+**Current Focus:** Phase 7 complete - Demo Missions
 
 ---
 
@@ -25,10 +25,10 @@ progress:
 
 | Item | Value |
 |------|-------|
-| **Phase** | 06-demo-validation |
+| **Phase** | 07-demo-missions |
 | **Plan** | 01 |
 | **Status** | Completed |
-| **Progress** | [==========] 3/3 tasks (100%) |
+| **Progress** | [==========] 8 files created (100%) |
 
 ---
 
@@ -79,6 +79,10 @@ progress:
 - **ValidationPanel:** React component orchestrating sequential validation (preflight -> health -> mission)
 - **Battery calculation:** Conservative estimate using duration/30 + 20% buffer
 - **Waypoint range:** 5m default radius for demo environment
+- **Waypoint generators:** Circle, ellipse, figure-8 patterns in src/demo/waypoint_patterns.py
+- **P2P generator:** A->B->A missions with hover in src/demo/p2p_generator.py
+- **Demo CLI:** All scripts use urllib (stdlib) for zero-dependency API calls
+- **Natural language:** Keyword-based parsing in trigger_demo.py for agent-triggered missions
 
 ### Dependencies Identified
 - API depends on Fleet + Mission + Safety
@@ -99,9 +103,9 @@ progress:
 
 ## Session Continuity
 
-**Last action:** Completed Phase 6 Plan 1 - added mission validation endpoint, frontend API, and ValidationPanel component
+**Last action:** Completed Phase 7 Plan 1 - added waypoint generators and demo scripts
 
-**Next action:** Ready for Phase 7 - Demo Missions
+**Next action:** Ready for Phase 8 - Demo Booth
 
 **Blockers:** None
 
@@ -121,7 +125,7 @@ progress:
 | Phase 5 Plan 01 | 2026-02-28 | Complete |
 | Phase 5 Plan 02 | 2026-02-28 | Complete |
 | Phase 6 Plan 01 | 2026-02-28 | Complete |
-| Phase 7 - Demo Missions | TBD | - |
+| Phase 7 - Demo Missions | 2026-02-28 | Complete |
 
 ---
 

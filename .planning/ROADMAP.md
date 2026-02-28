@@ -7,8 +7,8 @@
 - [x] **Phase 3: Demo Venue Setup** — Site survey, drone-acharya positioning, node programming (completed 2026-02-28)
 - [x] **Phase 4: Drone Control API** — Add takeoff/land/go_to/state endpoints for verify-position.py (completed 2026-02-28)
 - [x] **Phase 5: LED Fix + Dashboard Wiring** — Fix LED hardcoded URI, wire camera/LED to Dashboard (completed 2026-02-28)
-- [ ] **Phase 6: Demo Validation** — Pre-flight tests, mission validation, system health check
-- [ ] **Phase 7: Demo Missions** — Pattern flights, point-to-point, agent-triggered scenarios
+- [x] **Phase 6: Demo Validation** — Pre-flight tests, mission validation, system health check (completed 2026-02-28)
+- [x] **Phase 7: Demo Missions** — Pattern flights, point-to-point, agent-triggered scenarios (completed 2026-02-28)
 - [ ] **Phase 8: Demo Booth** — Power, network, space, safety requirements
 
 ## Phase Details
@@ -148,7 +148,7 @@
 3. Agent-triggered demo shows AI dispatching drone for inspection
 4. Periodic patrol demo shows scheduled autonomous missions
 
-**Plans:** TBD
+**Plans:** 1/1 plans complete
 
 ---
 
@@ -179,7 +179,7 @@
 | 4. Drone Control API | 1/1 | Complete    | 2026-02-28 |
 | 5. LED Fix + Dashboard Wiring | 2/2 | Complete    | 2026-02-28 |
 | 6. Demo Validation | 1/1 | Complete    | 2026-02-28 |
-| 7. Demo Missions | 0/1 | Not started | - |
+| 7. Demo Missions | 1/1 | Complete    | 2026-02-28 |
 | 8. Demo Booth | 0/1 | Not started | - |
 
 ---
