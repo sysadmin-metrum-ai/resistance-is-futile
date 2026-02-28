@@ -32,6 +32,30 @@ class DroneUpdateRequest(BaseModel):
     enabled: Optional[bool] = Field(None, description="Enable or disable drone")
 
 
+class TakeoffRequest(BaseModel):
+    """Request body for drone takeoff."""
+
+    height: float = Field(0.5, description="Target height in meters")
+
+
+class GoToRequest(BaseModel):
+    """Request body for drone go_to command."""
+
+    x: float = Field(..., description="X coordinate in meters")
+    y: float = Field(..., description="Y coordinate in meters")
+    z: float = Field(..., description="Z coordinate in meters")
+
+
+class DroneStateResponse(BaseModel):
+    """Drone state response."""
+
+    drone_id: int
+    state: str
+    battery: Optional[int] = None
+    connection_quality: Optional[int] = None
+    position: Optional[dict] = None
+
+
 class DroneResponse(BaseModel):
     """Drone information response."""
 
@@ -265,4 +289,127 @@ async def update_drone(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to update drone: {str(e)}"
+        )
+
+
+@router.post("/{drone_id}/takeoff", response_model=DroneStateResponse)
+async def takeoff(
+    drone_id: int,
+    takeoff_req: TakeoffRequest,
+    mission_queue: MissionQueue = Depends(get_mission_queue),
+    x_api_key: str = Header(None, alias="X-API-Key"),
+):
+    """Command a drone to take off to a specified height."""
+    verify_api_key(x_api_key)
+
+    try:
+        # Update drone state in Redis
+        await mission_queue.update_drone_status(
+            str(drone_id),
+            {"state": "taking_off", "height": takeoff_req.height}
+        )
+
+        # Return updated state
+        status = await mission_queue.get_drone_status(str(drone_id))
+        return DroneStateResponse(
+            drone_id=drone_id,
+            state=status.get("state", "taking_off"),
+            battery=status.get("battery"),
+            connection_quality=status.get("connection_quality"),
+            position=status.get("position"),
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to command takeoff: {str(e)}"
+        )
+
+
+@router.post("/{drone_id}/land", response_model=DroneStateResponse)
+async def land(
+    drone_id: int,
+    mission_queue: MissionQueue = Depends(get_mission_queue),
+    x_api_key: str = Header(None, alias="X-API-Key"),
+):
+    """Command a drone to land."""
+    verify_api_key(x_api_key)
+
+    try:
+        # Update drone state in Redis
+        await mission_queue.update_drone_status(
+            str(drone_id),
+            {"state": "landing", "position": {"x": 0, "y": 0, "z": 0}}
+        )
+
+        # Return updated state
+        status = await mission_queue.get_drone_status(str(drone_id))
+        return DroneStateResponse(
+            drone_id=drone_id,
+            state=status.get("state", "landing"),
+            battery=status.get("battery"),
+            connection_quality=status.get("connection_quality"),
+            position=status.get("position"),
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to command land: {str(e)}"
+        )
+
+
+@router.post("/{drone_id}/go_to", response_model=DroneStateResponse)
+async def go_to(
+    drone_id: int,
+    goto_req: GoToRequest,
+    mission_queue: MissionQueue = Depends(get_mission_queue),
+    x_api_key: str = Header(None, alias="X-API-Key"),
+):
+    """Command a drone to go to a specific position."""
+    verify_api_key(x_api_key)
+
+    try:
+        # Update drone state in Redis
+        await mission_queue.update_drone_status(
+            str(drone_id),
+            {"state": "flying", "position": {"x": goto_req.x, "y": goto_req.y, "z": goto_req.z}}
+        )
+
+        # Return updated state
+        status = await mission_queue.get_drone_status(str(drone_id))
+        return DroneStateResponse(
+            drone_id=drone_id,
+            state=status.get("state", "flying"),
+            battery=status.get("battery"),
+            connection_quality=status.get("connection_quality"),
+            position=status.get("position"),
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to command go_to: {str(e)}"
+        )
+
+
+@router.get("/{drone_id}/state", response_model=DroneStateResponse)
+async def get_drone_state(
+    drone_id: int,
+    mission_queue: MissionQueue = Depends(get_mission_queue),
+    x_api_key: str = Header(None, alias="X-API-Key"),
+):
+    """Get current state of a drone."""
+    verify_api_key(x_api_key)
+
+    try:
+        status = await mission_queue.get_drone_status(str(drone_id))
+        return DroneStateResponse(
+            drone_id=drone_id,
+            state=status.get("state", "unknown"),
+            battery=status.get("battery"),
+            connection_quality=status.get("connection_quality"),
+            position=status.get("position"),
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get drone state: {str(e)}"
         )
