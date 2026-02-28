@@ -55,6 +55,22 @@ class MissionAbortResponse(BaseModel):
     status: str
 
 
+class MissionValidationRequest(BaseModel):
+    """Request body for mission validation."""
+
+    drone_id: int
+    waypoints: list[dict]
+    duration_seconds: int
+
+
+class MissionValidationResponse(BaseModel):
+    """Response for mission validation."""
+
+    valid: bool
+    checks: dict
+    warnings: list[str]
+
+
 # Dependencies
 async def get_drone_manager() -> DroneManager:
     """Get drone manager instance."""
@@ -307,6 +323,78 @@ async def pre_flight_check(
     ])
 
     return PreFlightCheckResponse(ready=ready, checks=checks)
+
+
+# Default max operational radius for demo (in meters)
+DEFAULT_MAX_RADIUS = 5.0
+
+
+@router.post("/validate-mission", response_model=MissionValidationResponse)
+async def validate_mission(
+    request: MissionValidationRequest,
+    drone_manager: DroneManager = Depends(get_drone_manager),
+    flight_controller: FlightController = Depends(get_flight_controller),
+    x_api_key: str = Header(None, alias="X-API-Key"),
+):
+    """
+    Validate if a planned mission can be executed.
+
+    Checks:
+    1. Drone ready: drone exists, enabled, state is idle
+    2. Battery sufficient: battery >= (duration_seconds / 30) + 20 (conservative estimate)
+    3. Waypoints in range: all waypoints within max operational radius
+    """
+    verify_api_key(x_api_key)
+
+    checks = {}
+    warnings = []
+
+    # Get drone details
+    try:
+        drone = await drone_manager.get_drone(request.drone_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Drone {request.drone_id} not found"
+        )
+
+    # Check 1: Drone ready
+    drone_enabled = drone.get("enabled", True)
+    drone_state = drone.get("state", "offline")
+    drone_ready = drone_enabled and drone_state == "idle"
+    checks["drone_ready"] = drone_ready
+    checks["drone_state"] = drone_state
+    if not drone_ready:
+        if not drone_enabled:
+            warnings.append(f"Drone {request.drone_id} is disabled")
+        if drone_state != "idle":
+            warnings.append(f"Drone {request.drone_id} is not idle (state: {drone_state})")
+
+    # Check 2: Battery sufficient
+    battery = drone.get("battery", 0)
+    min_battery = int((request.duration_seconds / 30) + 20)  # Conservative: 1% per 30s + 20% buffer
+    battery_sufficient = battery >= min_battery
+    checks["battery_sufficient"] = battery_sufficient
+    checks["battery"] = battery
+    checks["battery_required"] = min_battery
+    if not battery_sufficient:
+        warnings.append(f"Battery {battery}% is below required {min_battery}% for {request.duration_seconds}s mission")
+
+    # Check 3: Waypoints in range
+    waypoints_in_range = True
+    for i, wp in enumerate(request.waypoints):
+        x = wp.get("x", 0)
+        y = wp.get("y", 0)
+        # Calculate distance from origin (0, 0)
+        distance = (x ** 2 + y ** 2) ** 0.5
+        if distance > DEFAULT_MAX_RADIUS:
+            waypoints_in_range = False            warnings.append(f"Waypoint {i} at ({x}, {y}) is {distance:.1f}m from origin (max: {DEFAULT_MAX_RADIUS}m)")
+    checks["waypoints_in_range"] = waypoints_in_range
+
+    # Determine overall validity
+    valid = drone_ready and battery_sufficient and waypoints_in_range
+
+    return MissionValidationResponse(valid=valid, checks=checks, warnings=warnings)
 
 
 @router.post("/missions/{mission_id}/abort", response_model=MissionAbortResponse)
