@@ -69,14 +69,14 @@ class DroneAPI:
 
     async def get_drone_status(self, drone_id: str) -> dict:
         """Get current drone status."""
-        response = await self.client.get(f"{self.base_url}/api/drones/{drone_id}")
+        response = await self.client.get(f"{self.base_url}/drones/{drone_id}")
         response.raise_for_status()
         return response.json()
 
     async def takeoff(self, drone_id: str, height: float) -> dict:
         """Command drone to take off."""
         response = await self.client.post(
-            f"{self.base_url}/api/drones/{drone_id}/takeoff",
+            f"{self.base_url}/drones/{drone_id}/takeoff",
             json={"height": height},
         )
         response.raise_for_status()
@@ -85,7 +85,7 @@ class DroneAPI:
     async def land(self, drone_id: str) -> dict:
         """Command drone to land."""
         response = await self.client.post(
-            f"{self.base_url}/api/drones/{drone_id}/land",
+            f"{self.base_url}/drones/{drone_id}/land",
         )
         response.raise_for_status()
         return response.json()
@@ -93,7 +93,7 @@ class DroneAPI:
     async def go_to(self, drone_id: str, x: float, y: float, z: float) -> dict:
         """Command drone to go to a position."""
         response = await self.client.post(
-            f"{self.base_url}/api/drones/{drone_id}/go_to",
+            f"{self.base_url}/drones/{drone_id}/go_to",
             json={"x": x, "y": y, "z": z},
         )
         response.raise_for_status()
@@ -103,7 +103,7 @@ class DroneAPI:
         """Get current estimated position from Loco Positioning."""
         # Try state endpoint first
         try:
-            response = await self.client.get(f"{self.base_url}/api/drones/{drone_id}/state")
+            response = await self.client.get(f"{self.base_url}/drones/{drone_id}/state")
             if response.status_code == 200:
                 state = response.json()
                 return Position(
