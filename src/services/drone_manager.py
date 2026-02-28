@@ -9,6 +9,7 @@ import redis.asyncio as redis
 
 from src.core.config import Settings, get_settings
 from src.core.postgrest import PostgRESTClient
+from src.services.event_broadcaster import get_broadcaster
 from src.services.mission_queue import MissionQueue
 
 
@@ -80,6 +81,10 @@ class DroneManager:
         }
 
         result = await self.postgrest.post("/drones", drone_data)
+
+        # Emit registration event
+        await self._emit_drone_event("registered", result)
+
         return result
 
     async def unregister_drone(self, drone_id: int) -> None:
@@ -93,6 +98,9 @@ class DroneManager:
 
         # Also clear Redis state
         await self.mission_queue.update_drone_status(str(drone_id), DroneState.OFFLINE)
+
+        # Emit unregistration event
+        await self._emit_drone_event("unregistered", {"id": drone_id})
 
     async def get_available_drone(self) -> Optional[dict]:
         """
@@ -165,6 +173,28 @@ class DroneManager:
 
         # Update Redis for real-time queries
         await self.mission_queue.update_drone_status(str(drone_id), state, battery)
+
+        # Emit state change event
+        await self._emit_drone_event("state_changed", {
+            "id": drone_id,
+            "state": state,
+            "battery": battery,
+        })
+
+    async def _emit_drone_event(self, event_type: str, drone_data: dict) -> None:
+        """Emit a drone update event."""
+        try:
+            broadcaster = await get_broadcaster()
+            await broadcaster.publish(
+                broadcaster.CHANNEL_DRONE_UPDATES,
+                {
+                    "type": event_type,
+                    "drone": drone_data,
+                }
+            )
+        except Exception:
+            # Event emission is best-effort, don't fail the main operation
+            pass
 
 
 async def get_drone_manager() -> DroneManager:
