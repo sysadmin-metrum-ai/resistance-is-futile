@@ -43,7 +43,7 @@
 
 - [ ] **CAM-01**: Drone captures images during mission for visual inspection
 - [ ] **CAM-02**: Images stored and accessible via API after mission
-- [ ] **LED-01**: LED indicates drone state (green=ready, yellow=busy, red=error)
+- [x] **LED-01**: LED indicates drone state (green=ready, yellow=busy, red=error)
 
 ## v2 Requirements
 
@@ -126,7 +126,7 @@
 | DASH-04 | Phase 2 | Pending |
 | CAM-01 | Phase 2 | Pending |
 | CAM-02 | Phase 2 | Pending |
-| LED-01 | Phase 2 | Pending |
+| LED-01 | Phase 2 | Complete |
 | VENUE-01 | Phase 3 | Pending |
 | VENUE-02 | Phase 3 | Pending |
 | VENUE-03 | Phase 3 | Pending |
