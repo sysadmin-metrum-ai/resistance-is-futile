@@ -36,7 +36,7 @@
 14. Pre-flight health check validates battery and connection before takeoff
 15. Mission abort command stops current mission and returns drone to idle
 
-**Plans:** 3/3 plans complete
+**Plans:** 4/4 plans complete (+ 3 gap closure plans for testing infrastructure)
 
 ---
 
