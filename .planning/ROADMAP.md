@@ -4,6 +4,10 @@
 
 - [ ] **Phase 1: Backend Core** — Agent API, Fleet Management, Mission Control, Safety Systems
 - [ ] **Phase 2: Dashboard & Peripherals** — Web Dashboard, Camera Capture, LED Status
+- [ ] **Phase 3: Demo Venue Setup** — Site survey, drone-acharya positioning, node programming
+- [ ] **Phase 4: Demo Validation** — Pre-flight tests, mission validation, system health check
+- [ ] **Phase 5: Demo Missions** — Pattern flights, point-to-point, agent-triggered scenarios
+- [ ] **Phase 6: Demo Booth** — Power, network, space, safety requirements
 
 ## Phase Details
 
@@ -57,12 +61,85 @@
 
 ---
 
+### Phase 3: Demo Venue Setup
+
+**Goal:** Enable rapid venue setup for demo deployment
+
+**Depends on:** Phase 2 (requires working drone control system)
+
+**Requirements:** VENUE-01, VENUE-02, VENUE-03
+
+**Success Criteria** (what must be TRUE):
+1. Site survey procedure documented for measuring anchor positions
+2. drone-acharya tool generates anchor coordinates from measurements
+3. Coordinates programmatically pushed to Loco Positioning nodes via radio API
+
+**Plans:** TBD
+
+---
+
+### Phase 4: Demo Validation
+
+**Goal:** Validate system readiness before live demo
+
+**Depends on:** Phase 3 (requires venue setup complete)
+
+**Requirements:** VALID-01, VALID-02, VALID-03
+
+**Success Criteria** (what must be TRUE):
+1. Pre-flight checklist executes and reports all systems go
+2. Mission validation confirms drone can execute planned flight paths
+3. System health check reports battery, connection, positioning status
+
+**Plans:** TBD
+
+---
+
+### Phase 5: Demo Missions
+
+**Goal:** Execute impressive flight demonstrations at booth
+
+**Depends on:** Phase 4 (requires validation complete)
+
+**Requirements:** DEMO-01, DEMO-02, DEMO-03, DEMO-04
+
+**Success Criteria** (what must be TRUE):
+1. Drones execute pattern flights (circle, ellipse, figure-8)
+2. Drones execute point-to-point missions with hover and return
+3. Agent-triggered demo shows AI dispatching drone for inspection
+4. Periodic patrol demo shows scheduled autonomous missions
+
+**Plans:** TBD
+
+---
+
+### Phase 6: Demo Booth
+
+**Goal:** Document booth requirements for conference logistics
+
+**Depends on:** Phase 5 (requires demo missions defined)
+
+**Requirements:** BOOTH-01, BOOTH-02, BOOTH-03
+
+**Success Criteria** (what must be TRUE):
+1. Power requirements documented (NUC, radios, charging)
+2. Network requirements documented (WiFi, radio frequencies)
+3. Safety requirements documented (demo area, observer, emergency procedures)
+
+**Plans:** TBD
+
+---
+
 ## Progress
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Backend Core | 0/1 | Not started | - |
 | 2. Dashboard & Peripherals | 0/1 | Not started | - |
+| 3. Demo Venue Setup | 0/1 | Not started | - |
+| 4. Demo Validation | 0/1 | Not started | - |
+| 5. Demo Missions | 0/1 | Not started | - |
+| 6. Demo Booth | 0/1 | Not started | - |
 
 ---
 
