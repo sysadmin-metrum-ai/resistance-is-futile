@@ -74,7 +74,7 @@
 2. drone-acharya tool generates anchor coordinates from measurements
 3. Coordinates programmatically pushed to Loco Positioning nodes via radio API
 
-**Plans:** TBD
+**Plans:** 1/1 complete (Plan 01: Survey docs, push-anchors.py, verify-position.py, drone-acharya tests)
 
 ---
 
@@ -136,7 +136,7 @@
 |-------|----------------|--------|-----------|
 | 1. Backend Core | 3/3 | Complete    | 2026-02-28 |
 | 2. Dashboard & Peripherals | 6/6 | Complete    | 2026-02-28 |
-| 3. Demo Venue Setup | 0/1 | Not started | - |
+| 3. Demo Venue Setup | 1/1 | Complete    | 2026-02-28 |
 | 4. Demo Validation | 0/1 | Not started | - |
 | 5. Demo Missions | 0/1 | Not started | - |
 | 6. Demo Booth | 0/1 | Not started | - |
@@ -169,8 +169,11 @@
 | CAM-01 | Phase 2 |
 | CAM-02 | Phase 2 |
 | LED-01 | Phase 2 |
+| VENUE-01 | Phase 3 |
+| VENUE-02 | Phase 3 |
+| VENUE-03 | Phase 3 |
 
-**Mapped:** 22/22 requirements
+**Mapped:** 25/25 requirements
 
 ---
 
