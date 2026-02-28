@@ -7,10 +7,10 @@
 
 ### Agent API
 
-- [ ] **API-01**: Agent can submit mission request via REST API (target drone, waypoints, duration)
-- [ ] **API-02**: Agent can query drone status (battery, position, connection quality)
-- [ ] **API-03**: Agent receives mission completion callback with results
-- [ ] **API-04**: API handles concurrent mission requests without race conditions
+- [x] **API-01**: Agent can submit mission request via REST API (target drone, waypoints, duration)
+- [x] **API-02**: Agent can query drone status (battery, position, connection quality)
+- [x] **API-03**: Agent receives mission completion callback with results
+- [x] **API-04**: API handles concurrent mission requests without race conditions
 
 ### Fleet Management
 
@@ -28,9 +28,9 @@
 
 ### Safety
 
-- [ ] **SAFE-01**: Kill switch command lands all drones immediately
-- [ ] **SAFE-02**: Pre-flight health check validates battery and connection before takeoff
-- [ ] **SAFE-03**: Mission abort command stops current mission and returns drone to idle
+- [x] **SAFE-01**: Kill switch command lands all drones immediately
+- [x] **SAFE-02**: Pre-flight health check validates battery and connection before takeoff
+- [x] **SAFE-03**: Mission abort command stops current mission and returns drone to idle
 
 ### Dashboard
 
@@ -105,21 +105,21 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| API-01 | Phase 1 | Pending |
-| API-02 | Phase 1 | Pending |
-| API-03 | Phase 1 | Pending |
-| API-04 | Phase 1 | Pending |
-| FLEET-01 | Phase 1 | Pending |
-| FLEET-02 | Phase 1 | Pending |
-| FLEET-03 | Phase 1 | Pending |
-| FLEET-04 | Phase 1 | Pending |
-| MISS-01 | Phase 1 | Pending |
-| MISS-02 | Phase 1 | Pending |
-| MISS-03 | Phase 1 | Pending |
-| MISS-04 | Phase 1 | Pending |
-| SAFE-01 | Phase 1 | Pending |
-| SAFE-02 | Phase 1 | Pending |
-| SAFE-03 | Phase 1 | Pending |
+| API-01 | Phase 1 | Complete |
+| API-02 | Phase 1 | Complete |
+| API-03 | Phase 1 | Complete |
+| API-04 | Phase 1 | Complete |
+| FLEET-01 | Phase 1 | Complete |
+| FLEET-02 | Phase 1 | Complete |
+| FLEET-03 | Phase 1 | Complete |
+| FLEET-04 | Phase 1 | Complete |
+| MISS-01 | Phase 1 | Complete |
+| MISS-02 | Phase 1 | Complete |
+| MISS-03 | Phase 1 | Complete |
+| MISS-04 | Phase 1 | Complete |
+| SAFE-01 | Phase 1 | Complete |
+| SAFE-02 | Phase 1 | Complete |
+| SAFE-03 | Phase 1 | Complete |
 | DASH-01 | Phase 2 | Pending |
 | DASH-02 | Phase 2 | Pending |
 | DASH-03 | Phase 2 | Pending |
