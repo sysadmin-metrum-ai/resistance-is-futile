@@ -112,7 +112,7 @@
 3. LED state controllable from Dashboard
 
 **Plans:**
-- [x] Plan 01: LED Fix + Dashboard Wiring (GAP-02)
+2/1 plans complete
 - [x] Plan 02: Gap Closure - Camera/LED Dashboard Wiring (GAP-02)
 
 ---
