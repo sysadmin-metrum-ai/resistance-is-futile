@@ -142,3 +142,44 @@ export interface HealthAlertData {
   type: 'battery_low' | 'connection_lost' | 'preflight_failed';
   message: string;
 }
+
+// ============================================================================
+// Image Types
+// ============================================================================
+
+export interface CaptureResponse {
+  image_id: string;
+  filepath: string;
+  mission_id: string;
+}
+
+export interface ImageListResponse {
+  mission_id: string;
+  images: string[];
+  count: number;
+}
+
+export interface DeleteImageResponse {
+  success: boolean;
+  image_id: string;
+}
+
+// ============================================================================
+// LED Types
+// ============================================================================
+
+export interface LEDSetRequest {
+  color: string;
+}
+
+export interface LEDBlinkRequest {
+  color: string;
+  duration: number;
+}
+
+export interface LEDResponse {
+  success: boolean;
+  drone_id: number;
+  action: string;
+  message: string;
+}

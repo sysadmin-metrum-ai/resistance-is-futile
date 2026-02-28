@@ -18,6 +18,12 @@ import type {
   BulkHealthCheckResponse,
   PreFlightCheckResponse,
   MissionAbortResponse,
+  CaptureResponse,
+  ImageListResponse,
+  DeleteImageResponse,
+  LEDSetRequest,
+  LEDBlinkRequest,
+  LEDResponse,
 } from '@/types';
 
 /**
@@ -180,6 +186,83 @@ export async function preFlightCheck(droneId: number): Promise<PreFlightCheckRes
  */
 export async function abortMission(missionId: string): Promise<MissionAbortResponse> {
   const response = await apiClient.post<MissionAbortResponse>(`/safety/missions/${missionId}/abort`);
+  return response.data;
+}
+
+// ============================================================================
+// Camera/Image API
+// ============================================================================
+
+/**
+ * Get the base URL for image retrieval.
+ */
+export function getImageUrl(imageId: string): string {
+  const baseURL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+  return `${baseURL}/images/${imageId}`;
+}
+
+/**
+ * List all images captured during a mission.
+ */
+export async function getMissionImages(missionId: string): Promise<ImageListResponse> {
+  const response = await apiClient.get<ImageListResponse>(`/images/mission/${missionId}`);
+  return response.data;
+}
+
+/**
+ * Capture a new image for a mission.
+ */
+export async function captureImage(
+  missionId: string,
+  droneId?: number,
+  captureInterval?: number
+): Promise<CaptureResponse> {
+  const params = new URLSearchParams();
+  params.append('mission_id', missionId);
+  if (droneId !== undefined) {
+    params.append('drone_id', droneId.toString());
+  }
+  if (captureInterval !== undefined) {
+    params.append('capture_interval', captureInterval.toString());
+  }
+
+  const response = await apiClient.post<CaptureResponse>(`/images/capture?${params.toString()}`);
+  return response.data;
+}
+
+/**
+ * Delete an image by ID.
+ */
+export async function deleteImage(imageId: string): Promise<DeleteImageResponse> {
+  const response = await apiClient.delete<DeleteImageResponse>(`/images/${imageId}`);
+  return response.data;
+}
+
+// ============================================================================
+// LED Control API
+// ============================================================================
+
+/**
+ * Set LED to a solid color on a drone.
+ */
+export async function setLEDColor(droneId: number, color: string): Promise<LEDResponse> {
+  const response = await apiClient.post<LEDResponse>(`/led/${droneId}/set`, { color } as LEDSetRequest);
+  return response.data;
+}
+
+/**
+ * Blink LED with a color for specified duration.
+ */
+export async function blinkLED(droneId: number, color: string, duration: number = 3.0): Promise<LEDResponse> {
+  const response = await apiClient.post<LEDResponse>(`/led/${droneId}/blink`, { color, duration } as LEDBlinkRequest);
+  return response.data;
+}
+
+/**
+ * Turn off LED on a drone.
+ */
+export async function turnOffLED(droneId: number): Promise<LEDResponse> {
+  const response = await apiClient.post<LEDResponse>(`/led/${droneId}/off`);
   return response.data;
 }
 
