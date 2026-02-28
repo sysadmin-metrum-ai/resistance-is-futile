@@ -10,6 +10,7 @@ from typing import Optional
 
 from src.core.config import Settings, get_settings
 from src.core.postgrest import PostgRESTClient
+from src.services.camera_capture import CameraCapture, get_camera_capture
 from src.services.drone_manager import DroneManager, DroneState
 from src.services.event_broadcaster import get_broadcaster
 from src.services.flight_controller import FlightController
@@ -38,12 +39,14 @@ class MissionWorker:
         drone_manager: Optional[DroneManager] = None,
         flight_controller: Optional[FlightController] = None,
         mission_queue: Optional[MissionQueue] = None,
+        camera_capture: Optional[CameraCapture] = None,
     ):
         """Initialize with optional dependencies for testing."""
         self.settings = settings or get_settings()
         self.drone_manager = drone_manager or DroneManager(self.settings)
         self.flight_controller = flight_controller or FlightController(self.settings)
         self.mission_queue = mission_queue or MissionQueue(self.settings)
+        self.camera_capture = camera_capture
         self._running = False
         self._task: Optional[asyncio.Task] = None
 
@@ -118,6 +121,9 @@ class MissionWorker:
             # Step 6: Execute mission
             waypoints = mission.get("waypoints", [])
             duration = mission.get("duration_seconds", 300)
+
+            # Capture initial image at mission start (graceful failure - log and continue)
+            await self._capture_image_at_interval(mission_id, drone_id, capture_interval=0)
 
             result = await self.flight_controller.execute_mission(
                 drone["uri"], waypoints, duration
@@ -224,6 +230,44 @@ class MissionWorker:
                 )
         except Exception as e:
             logger.error(f"Failed to send callback for mission {mission_id}: {e}")
+
+    async def _capture_image_at_interval(
+        self,
+        mission_id: str,
+        drone_id: Optional[str] = None,
+        capture_interval: Optional[int] = None,
+    ) -> None:
+        """
+        Capture an image at mission start or intervals.
+
+        Handles capture failures gracefully - logs and continues without
+        blocking the mission.
+
+        Args:
+            mission_id: ID of the mission
+            drone_id: ID of the drone
+            capture_interval: Interval index (0 for start, 1+ for subsequent)
+        """
+        if self.camera_capture is None:
+            try:
+                self.camera_capture = await get_camera_capture()
+            except Exception as e:
+                logger.warning(f"Failed to initialize camera capture: {e}")
+                return
+
+        try:
+            filepath = await self.camera_capture.capture(
+                mission_id=mission_id,
+                drone_id=drone_id,
+                capture_interval=capture_interval,
+            )
+            if filepath:
+                logger.info(f"Mission {mission_id}: Captured image at interval {capture_interval}")
+            else:
+                logger.warning(f"Mission {mission_id}: Image capture returned no filepath")
+        except Exception as e:
+            # Log and continue - capture failure should not block mission
+            logger.warning(f"Mission {mission_id}: Image capture failed: {e}")
 
     async def run_continuously(self) -> None:
         """
