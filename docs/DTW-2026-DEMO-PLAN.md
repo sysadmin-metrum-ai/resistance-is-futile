@@ -170,73 +170,85 @@ An **autonomous drone swarm** that extends AI infrastructure agents with physica
 
 ## 4. Detailed Release Plan
 
+### CRITICAL TIMELINE REVISION
+
+**DTW 2026: May 18-22, 2026**
+**COMPLETION DEADLINE: April 15, 2026**
+
+We have ~6 weeks from March 1 to April 15!
+
 ### Timeline Overview
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────┐
 │                        DTW 2026 RELEASE TIMELINE                            │
+│                        ⚠️ MAY 18-22, 2026 - LAS VEGAS                     │
 ├──────────────────────────────────────────────────────────────────────────────┤
 │                                                                              │
-│  MAR        APR        MAY        JUN        JUL        AUG        SEP       │
-│  ├───┤     ├───┤     ├───┤     ├───┤     ├───┤     ├───┤     ├───┤        │
-│  W1-W4      W1-W4      W1-W4      W1-W4      W1-W4      W1-W4      W1-W4    │
+│  MARCH 2026                  APRIL 2026                MAY 2026            │
+│  W1   W2   W3   W4           W1   W2   W3   W4         W1   W2           │
+│  ───  ───  ───  ───          ───  ───  ───  ───        ───  ───           │
 │                                                                              │
-│  ████████  ████████████████████████████  ████████████████████████████       │
-│  v1.0       v1.1                    v1.2                    v1.3          │
-│  Complete   Feature                  Integration              Stabilization  │
-│  + Booth    Freeze                   Testing                  + DTW          │
+│  ████████████████████████    ██████████████████████                        │
+│  v1.0 COMPLETE               v1.1 DTW READY                                 │
+│  + Phase 8                   + Thermal demo                                 │
+│  + All tests                  + Final stabilization                          │
+│                               + TRAVEL - Apr 14                              │
 │                                                                              │
-│       🔬 Lab       📹 Internal     📹 Internal           🚀 DTW             │
-│       Testing     Demo #1          Demo #2                 (Sep 15-18)       │
+│       🔬 Lab       📹 Internal         🚀 DTW                                │
+│       Testing     Demo                  (May 18-22)                          │
+│       Mar 7-14    Apr 7                                         
 │                                                                              │
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Milestones
 
-#### Milestone v1.0 — Core Platform ✅
-**Target:** March 15, 2026
+#### Milestone v1.0 — Core Platform + Phase 8
+**Target:** March 20, 2026
 **Status:** 88% Complete
 
-- [x] Agent API for mission dispatch
-- [x] Fleet management
-- [x] Web dashboard
-- [x] Drone control endpoints
-- [x] Safety systems
-- [x] Demo mission patterns
-- [ ] Demo booth requirements (Phase 8)
+**Remaining Work:**
+- [ ] Phase 8: Demo booth requirements (power, network, safety)
+- [ ] Mock mode (in progress - testing now)
+- [ ] Integration test #1: Full mission flow
 
 ---
 
-#### Milestone v1.1 — Feature Freeze
-**Target:** May 31, 2026
+#### Milestone v1.1 — DTW READY ✅
+**Target:** April 10, 2026
 
-**Scope:**
-- [ ] Thermal camera integration (real hardware)
-- [ ] Agent webhook integration (detect → dispatch)
-- [ ] Position auto-calibration
-- [ ] Multi-drone coordination (2-3 drones)
-- [ ] Mission scheduling (periodic + on-demand)
-- [ ] Demo booth requirements
+**CRITICAL PATH - No slack!**
 
-**Criteria:**
-- All DTW features implemented
-- No new features after this date
-- Only bug fixes allowed
+| Week | Focus | Deliverable |
+|------|-------|-------------|
+| Mar 2-8 | Phase 8 + Testing | Demo booth requirements, integration test passes |
+| Mar 9-15 | Thermal demo prep | Thermal camera working, demo script ready |
+| Mar 16-22 | Internal Demo #1 | Full demo run, video recording |
+| Mar 23-29 | Bug fixes | Any issues from demo #1 |
+| Mar 30-Apr 5 | Internal Demo #2 | Final rehearsal |
+| Apr 6-10 | Stabilization | 5 consecutive clean runs |
+| Apr 11-14 | Travel prep | Pack equipment, last checks |
+
+**Feature Freeze:** March 25, 2026 — No new features after this!
 
 ---
 
-#### Milestone v1.2 — Integration Testing
-**Target:** July 31, 2026
+#### Pre-DTW Checklist (April 10-15)
 
-**Scope:**
-- [ ] End-to-end AI Agent → Drone → Callback flow
-- [ ] Multi-drone mission execution
-- [ ] Thermal imaging pipeline
-- [ ] Dashboard enhancements for demo
-- [ ] Full system stress testing
-
-**Internal Demo #1 (Mid-June):**
+- [ ] 10 consecutive successful mission runs
+- [ ] Demo script rehearsed 10+ times
+- [ ] Backup hardware tested (2x drones, 2x batteries, spare anchors)
+- [ ] All equipment packed:
+  - [ ] 2x Crazyflie drones + batteries (charged)
+  - [ ] 6x Loco Positioning anchors
+  - [ ] USB radio dongles
+  - [ ] Laptop with API server + Dashboard
+  - [ ] Wireless access point
+  - [ ] Power strips, cables
+  - [ ] Kill switch backup (manual)
+- [ ] Travel booking confirmed
+- [ ] Demo video recorded as backup**
 - Full thermal anomaly demo
 - Invite: Internal stakeholders, management
 
@@ -263,26 +275,28 @@ An **autonomous drone swarm** that extends AI infrastructure agents with physica
 
 ---
 
-### Testing Schedule
+### Testing Schedule (6-Week Sprint)
 
-#### Weekly Tests (Starting April)
+#### Daily Tests (March 3 - April 10)
 
-| Week | Focus | Success Criteria |
-|------|-------|------------------|
-| W1 | API endpoints | All REST calls return 200 |
-| W2 | Mission execution | Drones execute full flight path |
-| W3 | Dashboard integration | Real-time updates < 1s latency |
-| W4 | Safety systems | Kill switch < 500ms response |
+| Day | Focus | Success Criteria |
+|-----|-------|------------------|
+| Mon | API endpoints | All REST calls return 200 |
+| Tue | Mission execution | Drones execute full flight path |
+| Wed | Dashboard integration | Real-time updates < 1s latency |
+| Thu | Safety systems | Kill switch < 500ms response |
+| Fri | Full demo run | End-to-end works |
 
-#### Monthly Integration Tests
+#### Weekly Integration Tests
 
-| Month | Scenario | Participants |
-|-------|----------|--------------|
-| April | Thermal anomaly detection | Dev team |
-| May | Multi-drone coordination | Dev + 1 tester |
-| June | Full AI Agent → Drone flow | Dev + QA + PM |
-| July | Full demo with recording | All stakeholders |
-| August | Dress rehearsal | Dev + demo team |
+| Week | Date | Focus | Success Criteria |
+|------|------|-------|------------------|
+| 1 | Mar 7 | Core platform | v1.0 complete, all APIs work |
+| 2 | Mar 14 | Full mission flow | Agent → dispatch → execute → callback |
+| 3 | Mar 21 | Internal Demo #1 | Full run for stakeholders |
+| 4 | Mar 28 | Bug fixes | All issues from demo #1 resolved |
+| 5 | Apr 4 | Internal Demo #2 | Final rehearsal |
+| 6 | Apr 11 | Dress rehearsal | 5 consecutive clean runs |
 
 ---
 
@@ -452,38 +466,49 @@ Simple integration — any AI agent can dispatch missions."
 
 ## 9. Action Items
 
-### Immediate (This Week)
+### Immediate (This Week - By March 3)
 - [ ] Review and approve this plan
-- [ ] Confirm hardware budget for v1.1
-- [ ] Schedule lab time for testing
+- [ ] Schedule lab time for testing (MUST have 2+ days/week)
+- [ ] Confirm Phase 8 scope with team
+- [ ] Verify all hardware available
 
-### April
-- [ ] Start thermal camera integration
-- [ ] First internal demo
-- [ ] Begin agent webhook implementation
+### Week 1 (March 3-9)
+- [ ] Complete Phase 8: Demo booth requirements
+- [ ] Complete mock mode integration testing
+- [ ] Run integration test #1: Full mission flow
 
-### May
-- [ ] Feature freeze v1.1
-- [ ] Multi-drone coordination
-- [ ] Second internal demo
+### Week 2 (March 10-16)
+- [ ] Internal Demo #1 for stakeholders
+- [ ] Record demo video for backup
+- [ ] Fix any issues from demo #1
 
-### June-July
-- [ ] Full integration testing
-- [ ] Marketing video recording
-- [ ] Dress rehearsals
+### Week 3 (March 17-23)
+- [ ] Thermal camera integration (or mock thermal demo)
+- [ ] Dashboard enhancements for presentation
+- [ ] Full rehearsal run
 
-### August
-- [ ] Bug bash
-- [ ] Travel prep
-- [ ] Equipment check
+### Week 4 (March 24-30)
+- [ ] Feature freeze (NO NEW FEATURES)
+- [ ] Bug fixes only
+- [ ] Internal Demo #2
 
-### September
-- [ ] DTW!
+### Week 5 (March 31 - April 6)
+- [ ] Dress rehearsals (5+ runs)
+- [ ] Final video recording
+- [ ] Pack equipment list
+
+### Week 6 (April 7-14)
+- [ ] Final stabilization
+- [ ] Travel to DTW (April 14)
+- [ ] Equipment setup at venue
+
+### DTW Week (May 18-22)
+- [ ] PRESENT! 🤘
 - [ ] Customer meetings
 - [ ] Feedback collection
 
 ---
 
-*Document Version: 1.0*
-*Created: March 2026*
+*Document Version: 1.1 - REVISED for DTW May 18*
+*Updated: March 1, 2026*
 *Owner: AI Ops Drone Swarm Team*
