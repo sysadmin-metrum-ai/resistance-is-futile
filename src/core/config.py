@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     image_storage_path: str = "./captures"
     image_quality: int = 85
 
+    # Mock/Simulation mode (default: true for demo safety - no actual drone commands)
+    mock_mode: bool = True
+
 
 # Global settings instance
 settings = Settings()
