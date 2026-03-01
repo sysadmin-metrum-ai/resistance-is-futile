@@ -34,10 +34,10 @@
 
 ### Dashboard
 
-- [ ] **DASH-01**: Dashboard displays real-time drone positions on 2D map
-- [ ] **DASH-02**: Dashboard shows mission queue and current status
-- [ ] **DASH-03**: Dashboard displays drone health (battery, connection)
-- [ ] **DASH-04**: Dashboard provides manual kill switch button
+- [x] **DASH-01**: Dashboard displays real-time drone positions on 2D map
+- [x] **DASH-02**: Dashboard shows mission queue and current status
+- [x] **DASH-03**: Dashboard displays drone health (battery, connection)
+- [x] **DASH-04**: Dashboard provides manual kill switch button
 
 ### Camera & LED
 
@@ -130,18 +130,18 @@
 | VENUE-01 | Phase 3 | Done |
 | VENUE-02 | Phase 3 | Done |
 | VENUE-03 | Phase 3 | Done |
-| VALID-01 | Phase 4 | Pending |
-| VALID-02 | Phase 4 | Pending |
-| VALID-03 | Phase 4 | Pending |
-| DEMO-01 | Phase 5 | Pending |
-| DEMO-02 | Phase 5 | Pending |
-| DEMO-03 | Phase 5 | Pending |
-| DEMO-04 | Phase 5 | Pending |
+| VALID-01 | Phase 6 | Complete |
+| VALID-02 | Phase 6 | Complete |
+| VALID-03 | Phase 6 | Complete |
+| DEMO-01 | Phase 7 | Complete |
+| DEMO-02 | Phase 7 | Complete |
+| DEMO-03 | Phase 7 | Complete |
+| DEMO-04 | Phase 7 | Complete |
 | BOOTH-01 | Phase 8 | Pending |
 | BOOTH-02 | Phase 8 | Pending |
 | BOOTH-03 | Phase 8 | Pending |
 | GAP-01 | Phase 4 | Done | Drone control endpoints for verify-position |
-| GAP-02 | Phase 5 | Pending | LED URI fix + Dashboard wiring |
+| GAP-02 | Phase 5 | Done | LED URI fix + Dashboard wiring |
 
 **Coverage:**
 - v1 requirements: 34 total
