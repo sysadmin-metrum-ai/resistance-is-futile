@@ -102,7 +102,7 @@ def verify_api_key(x_api_key: str = Header(None, alias="X-API-Key")):
     if settings.api_key and x_api_key != settings.api_key:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or missing API key"
+            detail="Invalid or missing API key",
         )
 
 
@@ -141,7 +141,7 @@ async def list_drones(
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to list drones: {str(e)}"
+            detail=f"Failed to list drones: {str(e)}",
         )
 
 
@@ -161,7 +161,7 @@ async def get_drone(
         if not result or len(result) == 0:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Drone {drone_id} not found"
+                detail=f"Drone {drone_id} not found",
             )
         drone = result[0]
 
@@ -180,7 +180,7 @@ async def get_drone(
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get drone: {str(e)}"
+            detail=f"Failed to get drone: {str(e)}",
         )
 
 
@@ -202,7 +202,7 @@ async def discover_drones(
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to discover drones: {str(e)}"
+            detail=f"Failed to discover drones: {str(e)}",
         )
 
 
@@ -225,7 +225,7 @@ async def register_drone(
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to register drone: {str(e)}"
+            detail=f"Failed to register drone: {str(e)}",
         )
 
 
@@ -243,8 +243,7 @@ async def unregister_drone(
         await drone_manager.get_drone(drone_id)
     except ValueError:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Drone {drone_id} not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"Drone {drone_id} not found"
         )
 
     try:
@@ -252,7 +251,7 @@ async def unregister_drone(
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to unregister drone: {str(e)}"
+            detail=f"Failed to unregister drone: {str(e)}",
         )
 
 
@@ -270,8 +269,7 @@ async def update_drone(
     result = await postgrest.get_drones(f"id=eq.{drone_id}&select=*")
     if not result or len(result) == 0:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Drone {drone_id} not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"Drone {drone_id} not found"
         )
 
     # Build update data
@@ -288,7 +286,7 @@ async def update_drone(
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to update drone: {str(e)}"
+            detail=f"Failed to update drone: {str(e)}",
         )
 
 
@@ -304,10 +302,7 @@ async def takeoff(
 
     try:
         # Update drone state in Redis
-        await mission_queue.update_drone_status(
-            str(drone_id),
-            {"state": "taking_off", "height": takeoff_req.height}
-        )
+        await mission_queue.update_drone_status(str(drone_id), "taking_off")
 
         # Return updated state
         status = await mission_queue.get_drone_status(str(drone_id))
@@ -321,7 +316,7 @@ async def takeoff(
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to command takeoff: {str(e)}"
+            detail=f"Failed to command takeoff: {str(e)}",
         )
 
 
@@ -336,10 +331,7 @@ async def land(
 
     try:
         # Update drone state in Redis
-        await mission_queue.update_drone_status(
-            str(drone_id),
-            {"state": "landing", "position": {"x": 0, "y": 0, "z": 0}}
-        )
+        await mission_queue.update_drone_status(str(drone_id), "landing")
 
         # Return updated state
         status = await mission_queue.get_drone_status(str(drone_id))
@@ -353,7 +345,7 @@ async def land(
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to command land: {str(e)}"
+            detail=f"Failed to command land: {str(e)}",
         )
 
 
@@ -369,10 +361,7 @@ async def go_to(
 
     try:
         # Update drone state in Redis
-        await mission_queue.update_drone_status(
-            str(drone_id),
-            {"state": "flying", "position": {"x": goto_req.x, "y": goto_req.y, "z": goto_req.z}}
-        )
+        await mission_queue.update_drone_status(str(drone_id), "flying")
 
         # Return updated state
         status = await mission_queue.get_drone_status(str(drone_id))
@@ -386,7 +375,7 @@ async def go_to(
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to command go_to: {str(e)}"
+            detail=f"Failed to command go_to: {str(e)}",
         )
 
 
@@ -411,5 +400,5 @@ async def get_drone_state(
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get drone state: {str(e)}"
+            detail=f"Failed to get drone state: {str(e)}",
         )

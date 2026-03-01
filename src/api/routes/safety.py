@@ -98,7 +98,7 @@ def verify_api_key(x_api_key: str = Header(None, alias="X-API-Key")):
     if settings.api_key and x_api_key != settings.api_key:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or missing API key"
+            detail="Invalid or missing API key",
         )
 
 
@@ -162,30 +162,25 @@ async def health_check_drone(
         drone = await drone_manager.get_drone(drone_id)
     except ValueError:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Drone {drone_id} not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"Drone {drone_id} not found"
         )
 
     # Check if drone is enabled
     if not drone.get("enabled", True):
-        return HealthCheckResponse(
-            ready=False,
-            reason=f"Drone {drone_id} is disabled"
-        )
+        return HealthCheckResponse(ready=False, reason=f"Drone {drone_id} is disabled")
 
     # Check if drone is available
     if drone.get("state") not in ["idle", "offline"]:
         return HealthCheckResponse(
             ready=False,
-            reason=f"Drone {drone_id} is not available (state: {drone.get('state')})"
+            reason=f"Drone {drone_id} is not available (state: {drone.get('state')})",
         )
 
     # Get drone URI for health check
     drone_uri = drone.get("uri")
     if not drone_uri:
         return HealthCheckResponse(
-            ready=False,
-            reason=f"Drone {drone_id} has no URI configured"
+            ready=False, reason=f"Drone {drone_id} has no URI configured"
         )
 
     # Perform health check via flight controller
@@ -195,13 +190,10 @@ async def health_check_drone(
             ready=health.is_healthy,
             battery=health.battery,
             connection_quality=health.connection_quality,
-            reason=health.message if not health.is_healthy else None
+            reason=health.message if not health.is_healthy else None,
         )
     except Exception as e:
-        return HealthCheckResponse(
-            ready=False,
-            reason=f"Health check failed: {str(e)}"
-        )
+        return HealthCheckResponse(ready=False, reason=f"Health check failed: {str(e)}")
 
 
 @router.post("/health-check", response_model=BulkHealthCheckResponse)
@@ -226,39 +218,42 @@ async def health_check_all_drones(
             drone_uri = drone.get("uri")
 
             if not drone_uri:
-                results.append(HealthCheckResponse(
-                    ready=False,
-                    reason=f"Drone {drone_id} has no URI"
-                ))
+                results.append(
+                    HealthCheckResponse(
+                        ready=False, reason=f"Drone {drone_id} has no URI"
+                    )
+                )
                 continue
 
             # Check if drone is enabled
             if not drone.get("enabled", True):
-                results.append(HealthCheckResponse(
-                    ready=False,
-                    reason=f"Drone {drone_id} is disabled"
-                ))
+                results.append(
+                    HealthCheckResponse(
+                        ready=False, reason=f"Drone {drone_id} is disabled"
+                    )
+                )
                 continue
 
             try:
                 health = await flight_controller.health_check(drone_uri)
-                results.append(HealthCheckResponse(
-                    ready=health.is_healthy,
-                    battery=health.battery,
-                    connection_quality=health.connection_quality,
-                    reason=health.message if not health.is_healthy else None
-                ))
+                results.append(
+                    HealthCheckResponse(
+                        ready=health.is_healthy,
+                        battery=health.battery,
+                        connection_quality=health.connection_quality,
+                        reason=health.message if not health.is_healthy else None,
+                    )
+                )
             except Exception as e:
-                results.append(HealthCheckResponse(
-                    ready=False,
-                    reason=f"Error: {str(e)}"
-                ))
+                results.append(
+                    HealthCheckResponse(ready=False, reason=f"Error: {str(e)}")
+                )
 
         return BulkHealthCheckResponse(results=results)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Health check failed: {str(e)}"
+            detail=f"Health check failed: {str(e)}",
         )
 
 
@@ -283,8 +278,7 @@ async def pre_flight_check(
         drone = await drone_manager.get_drone(drone_id)
     except ValueError:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Drone {drone_id} not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"Drone {drone_id} not found"
         )
 
     # Check 1: Enabled status
@@ -305,7 +299,9 @@ async def pre_flight_check(
     if drone_uri:
         try:
             health = await flight_controller.health_check(drone_uri)
-            checks["connection_ok"] = health.connection_quality >= DroneManager.MIN_CONNECTION_QUALITY
+            checks["connection_ok"] = (
+                health.connection_quality >= DroneManager.MIN_CONNECTION_QUALITY
+            )
             checks["connection_quality"] = health.connection_quality
         except Exception:
             checks["connection_ok"] = False
@@ -315,12 +311,14 @@ async def pre_flight_check(
         checks["connection_quality"] = 0
 
     # Determine overall readiness
-    ready = all([
-        checks["enabled"],
-        checks["state_idle"],
-        checks["battery_ok"],
-        checks["connection_ok"]
-    ])
+    ready = all(
+        [
+            checks["enabled"],
+            checks["state_idle"],
+            checks["battery_ok"],
+            checks["connection_ok"],
+        ]
+    )
 
     return PreFlightCheckResponse(ready=ready, checks=checks)
 
@@ -355,7 +353,7 @@ async def validate_mission(
     except ValueError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Drone {request.drone_id} not found"
+            detail=f"Drone {request.drone_id} not found",
         )
 
     # Check 1: Drone ready
@@ -368,17 +366,23 @@ async def validate_mission(
         if not drone_enabled:
             warnings.append(f"Drone {request.drone_id} is disabled")
         if drone_state != "idle":
-            warnings.append(f"Drone {request.drone_id} is not idle (state: {drone_state})")
+            warnings.append(
+                f"Drone {request.drone_id} is not idle (state: {drone_state})"
+            )
 
     # Check 2: Battery sufficient
     battery = drone.get("battery", 0)
-    min_battery = int((request.duration_seconds / 30) + 20)  # Conservative: 1% per 30s + 20% buffer
+    min_battery = int(
+        (request.duration_seconds / 30) + 20
+    )  # Conservative: 1% per 30s + 20% buffer
     battery_sufficient = battery >= min_battery
     checks["battery_sufficient"] = battery_sufficient
     checks["battery"] = battery
     checks["battery_required"] = min_battery
     if not battery_sufficient:
-        warnings.append(f"Battery {battery}% is below required {min_battery}% for {request.duration_seconds}s mission")
+        warnings.append(
+            f"Battery {battery}% is below required {min_battery}% for {request.duration_seconds}s mission"
+        )
 
     # Check 3: Waypoints in range
     waypoints_in_range = True
@@ -386,9 +390,12 @@ async def validate_mission(
         x = wp.get("x", 0)
         y = wp.get("y", 0)
         # Calculate distance from origin (0, 0)
-        distance = (x ** 2 + y ** 2) ** 0.5
+        distance = (x**2 + y**2) ** 0.5
         if distance > DEFAULT_MAX_RADIUS:
-            waypoints_in_range = False            warnings.append(f"Waypoint {i} at ({x}, {y}) is {distance:.1f}m from origin (max: {DEFAULT_MAX_RADIUS}m)")
+            waypoints_in_range = False
+            warnings.append(
+                f"Waypoint {i} at ({x}, {y}) is {distance:.1f}m from origin (max: {DEFAULT_MAX_RADIUS}m)"
+            )
     checks["waypoints_in_range"] = waypoints_in_range
 
     # Determine overall validity
@@ -419,7 +426,7 @@ async def abort_mission(
         if not result or len(result) == 0:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Mission {mission_id} not found"
+                detail=f"Mission {mission_id} not found",
             )
         mission = result[0]
     except HTTPException:
@@ -427,14 +434,14 @@ async def abort_mission(
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get mission: {str(e)}"
+            detail=f"Failed to get mission: {str(e)}",
         )
 
     # Check mission is running
     if mission.get("status") != "running":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"Mission {mission_id} is not running (status: {mission.get('status')})"
+            detail=f"Mission {mission_id} is not running (status: {mission.get('status')})",
         )
 
     # Get drone details
@@ -442,15 +449,14 @@ async def abort_mission(
     if not drone_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Mission has no assigned drone"
+            detail="Mission has no assigned drone",
         )
 
     try:
         drone = await drone_manager.get_drone(drone_id)
     except ValueError:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Drone {drone_id} not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"Drone {drone_id} not found"
         )
 
     # Abort mission on drone
@@ -465,7 +471,7 @@ async def abort_mission(
     try:
         await postgrest.patch(
             f"/missions?mission_id=eq.{mission_id}",
-            {"status": "cancelled", "result": {"aborted": True}}
+            {"status": "cancelled", "result": {"aborted": True}},
         )
     except Exception:
         pass

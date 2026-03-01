@@ -137,11 +137,18 @@ class DroneManager:
 
         Returns:
             Drone record
+
+        Raises:
+            ValueError: If drone not found
         """
         filters = f"id=eq.{drone_id}&select=*"
         result = await self.postgrest.get_drones(filters=filters)
-        if result and len(result) > 0:
+        if result is None or result == "null":
+            raise ValueError(f"Drone {drone_id} not found")
+        if isinstance(result, list) and len(result) > 0:
             return result[0]
+        if isinstance(result, dict) and result.get("id"):
+            return result
         raise ValueError(f"Drone {drone_id} not found")
 
     async def list_drones(self) -> list[dict]:
@@ -179,11 +186,14 @@ class DroneManager:
         await self._update_led_state(drone_id, state)
 
         # Emit state change event
-        await self._emit_drone_event("state_changed", {
-            "id": drone_id,
-            "state": state,
-            "battery": battery,
-        })
+        await self._emit_drone_event(
+            "state_changed",
+            {
+                "id": drone_id,
+                "state": state,
+                "battery": battery,
+            },
+        )
 
     async def _emit_drone_event(self, event_type: str, drone_data: dict) -> None:
         """Emit a drone update event."""
@@ -194,7 +204,7 @@ class DroneManager:
                 {
                     "type": event_type,
                     "drone": drone_data,
-                }
+                },
             )
         except Exception:
             # Event emission is best-effort, don't fail the main operation
