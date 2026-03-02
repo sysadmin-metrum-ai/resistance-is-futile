@@ -25,10 +25,10 @@ progress:
 
 | Item | Value |
 |------|-------|
-| **Phase** | 07-demo-missions |
-| **Plan** | 01 |
+| **Phase** | 01-backend-core |
+| **Plan** | 06 |
 | **Status** | Completed |
-| **Progress** | [==========] 8 files created (100%) |
+| **Progress** | [==========] 2 files (100%) |
 
 ---
 
@@ -36,7 +36,7 @@ progress:
 
 | Phase | Goal | Requirements | Status |
 |-------|------|--------------|--------|
-| 1 - Backend Core | Agent API, Fleet Management, Mission Control, Safety | 15 | Plans 01-03 complete |
+| 1 - Backend Core | Agent API, Fleet Management, Mission Control, Safety | 15 | Plans 01-06 complete |
 | 2 - Dashboard & Peripherals | Web Dashboard, Camera, LED Status | 7 | All plans complete |
 | 3 - Demo Venue Setup | Site survey, drone-acharya, anchor programming | 3 | Plan 01 complete |
 | 4 - Drone Control API | Takeoff/land/go_to/state endpoints | Gap | Plan 01 complete |
@@ -135,3 +135,5 @@ progress:
 ---
 
 *State updated: 2026-03-02*
+
+| Phase 01-backend-core P06 | 1min | 2 tasks | 2 files |
