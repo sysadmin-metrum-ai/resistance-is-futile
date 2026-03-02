@@ -32,3 +32,43 @@ Thumbs.db
 # Project specific
 logs/
 *.log
+
+# drone-acharya
+tools/drone-acharya/drone-acharya
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# UV/Python
+.venv/
+uv.lock
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build outputs
+*.tsbuildinfo
+.next/
+out/
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.orig
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
