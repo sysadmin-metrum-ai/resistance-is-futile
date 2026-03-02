@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: drone-swarm-postgres
+    environment:
+      POSTGRES_DB: drones
+      POSTGRES_USER: droneuser
+      POSTGRES_PASSWORD: dronetime
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U droneuser -d drones"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  postgrest:
+    image: postgrest/postgrest:v12.0.2
+    container_name: drone-swarm-postgrest
+    environment:
+      PGRST_DB_URI: postgres://droneuser:dronetime@postgres:5432/drones
+      PGRST_DB_SCHEMAS: public
+      PGRST_DB_ANON_ROLE: anon
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
+
+  redis:
+    image: redis:alpine
+    container_name: drone-swarm-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+volumes:
+  postgres-data:
+    driver: local
+  redis-data:
+    driver: local

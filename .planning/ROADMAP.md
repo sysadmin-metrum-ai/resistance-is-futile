@@ -2,12 +2,14 @@
 
 ## Phases
 
-- [ ] **Phase 1: Backend Core** — Agent API, Fleet Management, Mission Control, Safety Systems
-- [ ] **Phase 2: Dashboard & Peripherals** — Web Dashboard, Camera Capture, LED Status
-- [ ] **Phase 3: Demo Venue Setup** — Site survey, drone-acharya positioning, node programming
-- [ ] **Phase 4: Demo Validation** — Pre-flight tests, mission validation, system health check
-- [ ] **Phase 5: Demo Missions** — Pattern flights, point-to-point, agent-triggered scenarios
-- [ ] **Phase 6: Demo Booth** — Power, network, space, safety requirements
+- [x] **Phase 1: Backend Core** — Agent API, Fleet Management, Mission Control, Safety Systems (completed 2026-02-28)
+- [x] **Phase 2: Dashboard & Peripherals** — Web Dashboard, Camera Capture, LED Status (completed 2026-02-28)
+- [x] **Phase 3: Demo Venue Setup** — Site survey, drone-acharya positioning, node programming (completed 2026-02-28)
+- [x] **Phase 4: Drone Control API** — Add takeoff/land/go_to/state endpoints for verify-position.py (completed 2026-02-28)
+- [x] **Phase 5: LED Fix + Dashboard Wiring** — Fix LED hardcoded URI, wire camera/LED to Dashboard (completed 2026-02-28)
+- [x] **Phase 6: Demo Validation** — Pre-flight tests, mission validation, system health check (completed 2026-02-28)
+- [x] **Phase 7: Demo Missions** — Pattern flights, point-to-point, agent-triggered scenarios (completed 2026-02-28)
+- [ ] **Phase 8: Demo Booth** — Power, network, space, safety requirements
 
 ## Phase Details
 
@@ -36,7 +38,7 @@
 14. Pre-flight health check validates battery and connection before takeoff
 15. Mission abort command stops current mission and returns drone to idle
 
-**Plans:** 3 (Infrastructure → Fleet/Mission → API/Safety)
+**Plans:** 7/7 plans complete (including 3 gap closure plans for testing infrastructure)
 
 ---
 
@@ -57,7 +59,7 @@
 6. Images stored and accessible via API after mission
 7. LED indicates drone state (green=ready, yellow=busy, red=error)
 
-**Plans:** 3 (Infrastructure → Fleet/Mission → API/Safety)
+**Plans:** 5/5 plans complete
 
 ---
 
@@ -74,11 +76,48 @@
 2. drone-acharya tool generates anchor coordinates from measurements
 3. Coordinates programmatically pushed to Loco Positioning nodes via radio API
 
-**Plans:** TBD
+**Plans:** 1/1 plans complete
 
 ---
 
-### Phase 4: Demo Validation
+### Phase 4: Drone Control API
+
+**Goal:** Add drone control endpoints (takeoff/land/go_to/state) to fix verify-position.py
+
+**Depends on:** Phase 3 (requires venue setup for testing)
+
+**Requirements:** Gap closure from v1.0 audit
+
+**Success Criteria:**
+1. POST /drones/{id}/takeoff endpoint exists
+2. POST /drones/{id}/land endpoint exists
+3. POST /drones/{id}/go_to endpoint exists
+4. GET /drones/{id}/state endpoint exists
+
+**Plans:** 1/1 plans complete
+
+---
+
+### Phase 5: LED Fix + Dashboard Wiring
+
+**Goal:** Fix LED hardcoded URI bug, wire camera/LED to Dashboard
+
+**Depends on:** Phase 4
+
+**Requirements:** Gap closure from v1.0 audit
+
+**Success Criteria:**
+1. LED API fetches drone URI from PostgREST
+2. Camera images accessible in Dashboard
+3. LED state controllable from Dashboard
+
+**Plans:**
+2/1 plans complete
+- [x] Plan 02: Gap Closure - Camera/LED Dashboard Wiring (GAP-02)
+
+---
+
+### Phase 6: Demo Validation
 
 **Goal:** Validate system readiness before live demo
 
@@ -91,11 +130,11 @@
 2. Mission validation confirms drone can execute planned flight paths
 3. System health check reports battery, connection, positioning status
 
-**Plans:** TBD
+**Plans:** 1/1 plans complete
 
 ---
 
-### Phase 5: Demo Missions
+### Phase 7: Demo Missions
 
 **Goal:** Execute impressive flight demonstrations at booth
 
@@ -109,11 +148,11 @@
 3. Agent-triggered demo shows AI dispatching drone for inspection
 4. Periodic patrol demo shows scheduled autonomous missions
 
-**Plans:** TBD
+**Plans:** 1/1 plans complete
 
 ---
 
-### Phase 6: Demo Booth
+### Phase 8: Demo Booth
 
 **Goal:** Document booth requirements for conference logistics
 
@@ -134,12 +173,14 @@
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Backend Core | 0/1 | Not started | - |
-| 2. Dashboard & Peripherals | 0/1 | Not started | - |
-| 3. Demo Venue Setup | 0/1 | Not started | - |
-| 4. Demo Validation | 0/1 | Not started | - |
-| 5. Demo Missions | 0/1 | Not started | - |
-| 6. Demo Booth | 0/1 | Not started | - |
+| 1. Backend Core | 3/3 | Complete    | 2026-02-28 |
+| 2. Dashboard & Peripherals | 6/6 | Complete    | 2026-02-28 |
+| 3. Demo Venue Setup | 1/1 | Complete    | 2026-02-28 |
+| 4. Drone Control API | 1/1 | Complete    | 2026-02-28 |
+| 5. LED Fix + Dashboard Wiring | 2/2 | Complete    | 2026-02-28 |
+| 6. Demo Validation | 1/1 | Complete    | 2026-02-28 |
+| 7. Demo Missions | 1/1 | Complete    | 2026-02-28 |
+| 8. Demo Booth | 0/1 | Not started | - |
 
 ---
 
@@ -169,8 +210,11 @@
 | CAM-01 | Phase 2 |
 | CAM-02 | Phase 2 |
 | LED-01 | Phase 2 |
+| VENUE-01 | Phase 3 |
+| VENUE-02 | Phase 3 |
+| VENUE-03 | Phase 3 |
 
-**Mapped:** 22/22 requirements
+**Mapped:** 25/25 requirements
 
 ---
 

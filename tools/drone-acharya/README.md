@@ -68,6 +68,11 @@ drone-acharya solve distances.csv --json         # structured output
 | `--json` | `-j` | false | JSON output |
 | `--validate` | `-v` | false | Show validation (recomputed vs measured distances + error) |
 | `--precision` | `-p` | 3 | Decimal places |
+| `--rotate-ned` | | 0 | Clockwise rotation (degrees) from X-axis to North |
+| `--offset-x` | | 0 | X translation (meters) |
+| `--offset-y` | | 0 | Y translation (meters) |
+| `--offset-z` | | 0 | Z translation (meters) |
+| `--z-down` | | false | Flip Z-axis (+Z up → +Z down for NED) |
 
 ## Algorithm
 
@@ -171,7 +176,9 @@ drone-acharya/
 │   └── trilat.go         # trilateration math
 ├── io/
 │   ├── csv.go            # CSV/TSV parse + write
-│   └── format.go         # output formatters (table, json, crazyflie)
+│   ├── format.go         # output formatters (table, json, crazyflie)
+│   └── transform.go      # coordinate transformations (rotation, translation, Z-flip)
+├── COORDINATES.md        # coordinate system documentation
 └── go.mod
 ```
 
