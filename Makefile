@@ -76,27 +76,38 @@ test-integration: services-up
 	@echo "Cleaning up port 8000 if needed..."
 	@-lsof -ti:8000 | xargs -r kill -9 2>/dev/null || true
 	@sleep 1
-	@echo "Waiting for PostgreSQL and PostgREST to be ready..."
-	@sleep 5
+	@echo "Waiting for services to be ready..."
+	@sleep 3
 	@echo "Starting API server in background..."
 	@cd /home/cgadgil/src/resistance-is-futile && \
 		POSTGREST_URL=http://localhost:3000 \
 		POSTGREST_API_KEY=test-key \
-		uv run uvicorn src.main:app --host 0.0.0.0 --port 8000 &
-	@SERVER_PID=$$!
+		REDIS_URL=redis://localhost:6379 \
+		uv run uvicorn src.main:app --host 0.0.0.0 --port 8000 > /tmp/api-server.log 2>&1 & \
+		echo $$! > /tmp/api-server.pid
 	@echo "Waiting for API server to start..."
-	@sleep 3
-	@for i in 1 2 3 4 5 6 7 8 9 10; do \
+	@sleep 2
+	@for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do \
 		if curl -s http://localhost:8000/health > /dev/null 2>&1; then \
 			echo "API server is ready"; \
 			break; \
 		fi; \
 		sleep 1; \
+		if [ $$i -eq 15 ]; then \
+			echo "API server failed to start. Logs:"; \
+			cat /tmp/api-server.log; \
+			exit 1; \
+		fi; \
 	done
 	@echo "Running integration tests..."
-	cd /home/cgadgil/src/resistance-is-futile && uv run pytest tests/test_integration.py -v || true
-	@echo "Stopping API server..."
-	@kill $$SERVER_PID 2>/dev/null || true
+	@cd /home/cgadgil/src/resistance-is-futile && uv run pytest tests/test_integration.py -v; \
+		TEST_RESULT=$$?; \
+		echo "Stopping API server..."; \
+		if [ -f /tmp/api-server.pid ]; then \
+			kill $$(cat /tmp/api-server.pid) 2>/dev/null || true; \
+			rm -f /tmp/api-server.pid; \
+		fi; \
+		exit $$TEST_RESULT
 
 # Cleanup
 clean:
