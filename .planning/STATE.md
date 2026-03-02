@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-03-02T14:10:09.886Z"
+last_updated: "2026-03-02T14:15:57.265Z"
 progress:
   total_phases: 7
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 14
-  completed_plans: 17
+  completed_plans: 18
 ---
 
 # State: Drone Swarm Agent Integration
@@ -57,10 +57,13 @@ progress:
 ---
 | Phase 01-backend-core P04 | 0min | 1 tasks | 1 files |
 | Phase 01-backend-core P05 | 0min | 1 tasks | 1 files |
+| Phase 01-backend-core Pgap-closure | 1min | 3 tasks | 1 files |
 
 ## Accumulated Context
 
 ### Decisions Made
+- **Makefile process management:** Used PID file instead of subshell variables for reliable server process tracking during integration tests
+- **Test failure visibility:** Preserved pytest exit codes in Makefile to ensure test failures properly fail the build
 - **Phase structure:** 2 phases derived from natural requirement groupings (backend core before frontend)
 - **Safety priority:** Kill switch and health checks included in Phase 1 (before API exposure)
 - **Hardware integration:** Camera and LED in Phase 2 (after core backend is stable)
@@ -105,9 +108,9 @@ progress:
 
 ## Session Continuity
 
-**Last action:** Completed Phase 01 Plan 05 - Redis docker-compose service verified
+**Last action:** Completed Phase 01 gap-closure - Self-contained test infrastructure with all 6 UAT tests passing
 
-**Next action:** Ready for next plan in Phase 01 or continue to Phase 8
+**Next action:** Ready for next plan or phase
 
 **Blockers:** None
 
@@ -131,4 +134,4 @@ progress:
 
 ---
 
-*State updated: 2026-02-28*
+*State updated: 2026-03-02*
