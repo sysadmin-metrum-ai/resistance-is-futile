@@ -1,0 +1,16 @@
+{
+    auto_https off
+}
+
+:3003 {
+    # API requests - strip /api prefix before sending to backend
+    handle /api/* {
+        uri strip_prefix /api
+        reverse_proxy api:8000
+    }
+
+    # Dashboard - everything else
+    handle /* {
+        reverse_proxy dashboard:3000
+    }
+}

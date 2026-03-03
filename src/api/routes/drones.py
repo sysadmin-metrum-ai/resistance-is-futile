@@ -24,6 +24,20 @@ class DroneCreateRequest(BaseModel):
 
     uri: str = Field(..., description="Crazyflie URI (e.g., 'radio://0/80/1M/100M')")
     name: str = Field(..., description="Human-readable name (e.g., 'drone-1')")
+    fleet_id: Optional[int] = Field(
+        None, description="Optional fleet ID to assign drone to"
+    )
+
+
+class BulkDroneCreateRequest(BaseModel):
+    """Request body for bulk drone registration."""
+
+    drones: list[DroneCreateRequest] = Field(
+        ..., description="List of drones to register"
+    )
+    fleet_id: Optional[int] = Field(
+        None, description="Optional fleet ID to assign all drones to"
+    )
 
 
 class DroneUpdateRequest(BaseModel):
@@ -210,23 +224,86 @@ async def discover_drones(
 async def register_drone(
     drone_req: DroneCreateRequest,
     drone_manager: DroneManager = Depends(get_drone_manager),
+    postgrest: PostgRESTClient = Depends(get_postgrest),
     x_api_key: str = Header(None, alias="X-API-Key"),
 ):
     """
     Register a new drone in the fleet.
 
     Adds the drone to PostgREST and initializes its state in Redis.
+    Optionally assigns to a fleet.
     """
     verify_api_key(x_api_key)
 
     try:
         drone = await drone_manager.register_drone(drone_req.uri, drone_req.name)
+
+        # If fleet_id provided, assign drone to fleet
+        if drone_req.fleet_id:
+            await postgrest.patch(
+                f"/drones?id=eq.{drone['id']}", {"fleet_id": drone_req.fleet_id}
+            )
+            # Also record in fleet_assignments
+            await postgrest.post(
+                "/fleet_assignments",
+                {"fleet_id": drone_req.fleet_id, "drone_id": drone["id"]},
+            )
+            drone["fleet_id"] = drone_req.fleet_id
+
         return drone
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to register drone: {str(e)}",
         )
+
+
+@router.post("/bulk", status_code=status.HTTP_201_CREATED)
+async def register_drones_bulk(
+    bulk_req: BulkDroneCreateRequest,
+    drone_manager: DroneManager = Depends(get_drone_manager),
+    postgrest: PostgRESTClient = Depends(get_postgrest),
+    x_api_key: str = Header(None, alias="X-API-Key"),
+):
+    """
+    Register multiple drones at once.
+
+    Useful for setting up large fleets quickly.
+    """
+    verify_api_key(x_api_key)
+
+    successful = []
+    failed = []
+
+    for drone_req in bulk_req.drones:
+        try:
+            drone = await drone_manager.register_drone(drone_req.uri, drone_req.name)
+
+            # Assign to fleet if specified
+            fleet_id = drone_req.fleet_id or bulk_req.fleet_id
+            if fleet_id:
+                await postgrest.patch(
+                    f"/drones?id=eq.{drone['id']}", {"fleet_id": fleet_id}
+                )
+                await postgrest.post(
+                    "/fleet_assignments",
+                    {"fleet_id": fleet_id, "drone_id": drone["id"]},
+                )
+                drone["fleet_id"] = fleet_id
+
+            successful.append(drone)
+        except Exception as e:
+            failed.append(
+                {"uri": drone_req.uri, "name": drone_req.name, "reason": str(e)}
+            )
+
+    return {
+        "total_requested": len(bulk_req.drones),
+        "successful": successful,
+        "failed": failed,
+        "total_registered": len(successful),
+        "total_failed": len(failed),
+    }
 
 
 @router.delete("/{drone_id}", status_code=status.HTTP_204_NO_CONTENT)

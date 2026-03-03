@@ -180,7 +180,7 @@ export function ValidationPanel({
       console.error('Mission validation failed:', error);
       setMissionValidation({
         valid: false,
-        checks: { drone_ready: false, battery_sufficient: false, waypoints_in_range: false },
+        checks: { drone_ready: false, battery_sufficient: false, battery: null, waypoints_in_range: false },
         warnings: ['Validation request failed'],
       });
       setAllValid(false);
@@ -226,10 +226,10 @@ export function ValidationPanel({
       <CardContent className="space-y-4">
         {/* Pre-flight Section */}
         <SectionCard title="Pre-Flight Check" icon={Plane} status={preflightStatus}>
-          <CheckItem label="Drone Enabled" value={preflight?.checks?.enabled ?? null} isPending={preflightLoading} />
-          <CheckItem label="State: Idle" value={preflight?.checks?.state_idle ?? null} isPending={preflightLoading} />
-          <CheckItem label="Battery OK" value={preflight?.checks?.battery_ok ?? null} isPending={preflightLoading} />
-          <CheckItem label="Connection OK" value={preflight?.checks?.connection_ok ?? null} isPending={preflightLoading} />
+          <CheckItem label="Drone Enabled" value={typeof preflight?.checks?.enabled === 'boolean' ? preflight.checks.enabled : null} isPending={preflightLoading} />
+          <CheckItem label="State: Idle" value={typeof preflight?.checks?.state_idle === 'boolean' ? preflight.checks.state_idle : null} isPending={preflightLoading} />
+          <CheckItem label="Battery OK" value={typeof preflight?.checks?.battery_ok === 'boolean' ? preflight.checks.battery_ok : null} isPending={preflightLoading} />
+          <CheckItem label="Connection OK" value={typeof preflight?.checks?.connection_ok === 'boolean' ? preflight.checks.connection_ok : null} isPending={preflightLoading} />
         </SectionCard>
 
         {/* Health Section */}

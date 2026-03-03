@@ -1,6 +1,22 @@
 version: '3.8'
 
 services:
+  # Caddy Reverse Proxy
+  caddy:
+    image: caddy:2-alpine
+    container_name: drone-swarm-caddy
+    ports:
+      - "3003:3003"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      - api
+      - dashboard
+    networks:
+      - drone-network
+    restart: unless-stopped
+
+  # PostgreSQL Database
   postgres:
     image: postgres:15-alpine
     container_name: drone-swarm-postgres
@@ -19,7 +35,10 @@ services:
       timeout: 3s
       retries: 5
       start_period: 10s
+    networks:
+      - drone-network
 
+  # PostgREST API
   postgrest:
     image: postgrest/postgrest:v12.0.2
     container_name: drone-swarm-postgrest
@@ -32,13 +51,11 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-      start_period: 15s
+    networks:
+      - drone-network
+    restart: unless-stopped
 
+  # Redis Cache
   redis:
     image: redis:alpine
     container_name: drone-swarm-redis
@@ -52,9 +69,66 @@ services:
       timeout: 3s
       retries: 5
       start_period: 5s
+    networks:
+      - drone-network
+
+  # Drone Swarm API Server
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: drone-swarm-api
+    environment:
+      POSTGREST_URL: http://postgrest:3000
+      POSTGREST_API_KEY: ${POSTGREST_API_KEY:-}
+      REDIS_URL: redis://redis:6379
+      API_KEY: ${API_KEY:-}
+      MOCK_MODE: ${MOCK_MODE:-true}
+      IMAGE_STORAGE_PATH: /app/captures
+    # No port mapping needed - accessed via Caddy proxy internally
+    expose:
+      - "8000"
+    volumes:
+      - ./captures:/app/captures
+    depends_on:
+      postgres:
+        condition: service_healthy
+      postgrest:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    networks:
+      - drone-network
+    restart: unless-stopped
+
+  # Dashboard UI
+  dashboard:
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+    container_name: drone-swarm-dashboard
+    # No port mapping needed - accessed via Caddy proxy
+    expose:
+      - "3000"
+    depends_on:
+      api:
+        condition: service_started
+    networks:
+      - drone-network
+    restart: unless-stopped
 
 volumes:
   postgres-data:
     driver: local
   redis-data:
     driver: local
+
+networks:
+  drone-network:
+    driver: bridge

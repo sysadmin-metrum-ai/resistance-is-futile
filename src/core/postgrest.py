@@ -47,16 +47,38 @@ class PostgRESTClient:
     async def post(self, path: str, data: dict) -> dict:
         """Perform POST request."""
         client = await self._get_client()
-        response = await client.post(path, json=data)
+        headers = {"Prefer": "return=representation"}
+        response = await client.post(path, json=data, headers=headers)
         response.raise_for_status()
-        return response.json()
+
+        # Handle empty response
+        content = response.content
+        if not content or len(content.strip()) == 0:
+            return data  # Return the sent data if no response body
+
+        result = response.json()
+        # PostgREST returns a list with one item for POST
+        if isinstance(result, list) and len(result) > 0:
+            return result[0]
+        return result
 
     async def patch(self, path: str, data: dict) -> dict:
         """Perform PATCH request."""
         client = await self._get_client()
-        response = await client.patch(path, json=data)
+        headers = {"Prefer": "return=representation"}
+        response = await client.patch(path, json=data, headers=headers)
         response.raise_for_status()
-        return response.json()
+
+        # Handle empty response
+        content = response.content
+        if not content or len(content.strip()) == 0:
+            return data  # Return the sent data if no response body
+
+        result = response.json()
+        # PostgREST returns a list with one item for PATCH
+        if isinstance(result, list) and len(result) > 0:
+            return result[0]
+        return result
 
     async def delete(self, path: str) -> dict:
         """Perform DELETE request."""
