@@ -9,6 +9,7 @@ import type {
   DroneCreateRequest,
   DroneUpdateRequest,
   DiscoverResponse,
+  Waypoint,
   MissionRequest,
   MissionResponse,
   MissionDetailResponse,
@@ -26,14 +27,30 @@ import type {
   LEDSetRequest,
   LEDBlinkRequest,
   LEDResponse,
+  Fleet,
+  FleetCreateRequest,
+  FleetUpdateRequest,
+  DroneFleetAssignmentRequest,
+  DroneFleetAssignmentResponse,
+  BulkFleetAssignmentRequest,
+  Anchor,
+  AnchorCreateRequest,
+  AnchorUpdateRequest,
+  AnchorPositionUpdateRequest,
+  AnchorSystemStatus,
+  BulkAnchorCreateRequest,
 } from '@/types';
 
 /**
  * Create axios instance with API key interceptor.
  */
 function createApiClient(): AxiosInstance {
+  // Use relative URL '/api' when running behind reverse proxy (Caddy)
+  // This allows the browser to use the same host:port as the dashboard
+  const baseURL = '/api';
+
   const client = axios.create({
-    baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000',
+    baseURL,
     timeout: 30000,
     headers: {
       'Content-Type': 'application/json',
@@ -282,6 +299,168 @@ export async function blinkLED(droneId: number, color: string, duration: number 
  */
 export async function turnOffLED(droneId: number): Promise<LEDResponse> {
   const response = await apiClient.post<LEDResponse>(`/led/${droneId}/off`);
+  return response.data;
+}
+
+// ============================================================================
+// Fleet API
+// ============================================================================
+
+/**
+ * List all fleets with optional category filter.
+ */
+export async function getFleets(category?: string): Promise<Fleet[]> {
+  const params = category ? `?category=${category}` : '';
+  const response = await apiClient.get<{ fleets: Fleet[] }>(`/fleets${params}`);
+  return response.data.fleets;
+}
+
+/**
+ * Get details for a specific fleet.
+ */
+export async function getFleet(fleetId: number): Promise<Fleet> {
+  const response = await apiClient.get<Fleet>(`/fleets/${fleetId}`);
+  return response.data;
+}
+
+/**
+ * Create a new fleet.
+ */
+export async function createFleet(request: FleetCreateRequest): Promise<Fleet> {
+  const response = await apiClient.post<Fleet>('/fleets', request);
+  return response.data;
+}
+
+/**
+ * Update fleet properties.
+ */
+export async function updateFleet(fleetId: number, request: FleetUpdateRequest): Promise<Fleet> {
+  const response = await apiClient.patch<Fleet>(`/fleets/${fleetId}`, request);
+  return response.data;
+}
+
+/**
+ * Delete a fleet.
+ */
+export async function deleteFleet(fleetId: number): Promise<void> {
+  await apiClient.delete(`/fleets/${fleetId}`);
+}
+
+/**
+ * Get all drones assigned to a fleet.
+ */
+export async function getFleetDrones(fleetId: number): Promise<{ fleet_id: number; fleet_name: string; drones: Drone[] }> {
+  const response = await apiClient.get(`/fleets/${fleetId}/drones`);
+  return response.data;
+}
+
+/**
+ * Assign a drone to a fleet.
+ */
+export async function assignDroneToFleet(fleetId: number, request: DroneFleetAssignmentRequest): Promise<DroneFleetAssignmentResponse> {
+  const response = await apiClient.post<DroneFleetAssignmentResponse>(`/fleets/${fleetId}/assign`, request);
+  return response.data;
+}
+
+/**
+ * Assign multiple drones to a fleet.
+ */
+export async function bulkAssignDronesToFleet(fleetId: number, request: BulkFleetAssignmentRequest): Promise<{ fleet_id: number; fleet_name: string; successful: number[]; failed: { drone_id: number; reason: string }[]; total_assigned: number; total_failed: number }> {
+  const response = await apiClient.post(`/fleets/${fleetId}/assign-bulk`, request);
+  return response.data;
+}
+
+/**
+ * Remove a drone from a fleet.
+ */
+export async function unassignDroneFromFleet(fleetId: number, droneId: number): Promise<DroneFleetAssignmentResponse> {
+  const response = await apiClient.post<DroneFleetAssignmentResponse>(`/fleets/${fleetId}/unassign/${droneId}`);
+  return response.data;
+}
+
+// ============================================================================
+// Anchor API
+// ============================================================================
+
+/**
+ * List all Loco Positioning anchors.
+ */
+export async function getAnchors(status?: string, mode?: string): Promise<{ anchors: Anchor[]; total_count: number; online_count: number; offline_count: number }> {
+  const params = new URLSearchParams();
+  if (status) params.append('status', status);
+  if (mode) params.append('mode', mode);
+  const response = await apiClient.get(`/anchors?${params.toString()}`);
+  return response.data;
+}
+
+/**
+ * Get overall anchor system status.
+ */
+export async function getAnchorSystemStatus(): Promise<AnchorSystemStatus> {
+  const response = await apiClient.get<AnchorSystemStatus>('/anchors/system-status');
+  return response.data;
+}
+
+/**
+ * Get details for a specific anchor.
+ */
+export async function getAnchor(anchorId: number): Promise<Anchor> {
+  const response = await apiClient.get<Anchor>(`/anchors/${anchorId}`);
+  return response.data;
+}
+
+/**
+ * Register a new Loco Positioning anchor.
+ */
+export async function createAnchor(request: AnchorCreateRequest): Promise<Anchor> {
+  const response = await apiClient.post<Anchor>('/anchors', request);
+  return response.data;
+}
+
+/**
+ * Register multiple anchors at once.
+ */
+export async function createAnchorsBulk(request: BulkAnchorCreateRequest): Promise<{ successful: Anchor[]; failed: { anchor_id: number; reason: string }[] }> {
+  const response = await apiClient.post('/anchors/bulk', request);
+  return response.data;
+}
+
+/**
+ * Update anchor properties.
+ */
+export async function updateAnchor(anchorId: number, request: AnchorUpdateRequest): Promise<Anchor> {
+  const response = await apiClient.patch<Anchor>(`/anchors/${anchorId}`, request);
+  return response.data;
+}
+
+/**
+ * Update only anchor position.
+ */
+export async function updateAnchorPosition(anchorId: number, request: AnchorPositionUpdateRequest): Promise<Anchor> {
+  const response = await apiClient.patch<Anchor>(`/anchors/${anchorId}/position`, request);
+  return response.data;
+}
+
+/**
+ * Send heartbeat to mark anchor as online.
+ */
+export async function anchorHeartbeat(anchorId: number, batteryLevel?: number): Promise<{ anchor_id: number; status: string; last_seen: string; message: string }> {
+  const response = await apiClient.post(`/anchors/${anchorId}/heartbeat`, { battery_level: batteryLevel });
+  return response.data;
+}
+
+/**
+ * Delete an anchor.
+ */
+export async function deleteAnchor(anchorId: number): Promise<void> {
+  await apiClient.delete(`/anchors/${anchorId}`);
+}
+
+/**
+ * Get neighboring anchors.
+ */
+export async function getAnchorNeighbors(anchorId: number): Promise<{ anchor_id: number; position: { x: number; y: number; z: number }; neighbors: { anchor_id: number; name: string; distance_meters: number; status: string }[] }> {
+  const response = await apiClient.get(`/anchors/${anchorId}/neighbors`);
   return response.data;
 }
 

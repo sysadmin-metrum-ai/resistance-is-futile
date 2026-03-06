@@ -15,6 +15,7 @@ export interface Drone {
   battery: number | null;
   connection_quality: number | null;
   enabled: boolean;
+  fleet_id?: number;
   /** Optional position for map display */
   x?: number;
   y?: number;
@@ -23,6 +24,7 @@ export interface Drone {
 export interface DroneCreateRequest {
   uri: string;
   name: string;
+  fleet_id?: number;
 }
 
 export interface DroneUpdateRequest {
@@ -201,4 +203,129 @@ export interface LEDResponse {
   drone_id: number;
   action: string;
   message: string;
+}
+
+// ============================================================================
+// Fleet Types
+// ============================================================================
+
+export interface Fleet {
+  id: number;
+  name: string;
+  description: string | null;
+  category: string;
+  color: string;
+  max_drones: number;
+  enabled: boolean;
+  drone_count?: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FleetCreateRequest {
+  name: string;
+  description?: string;
+  category: string;
+  color?: string;
+  max_drones?: number;
+}
+
+export interface FleetUpdateRequest {
+  name?: string;
+  description?: string;
+  category?: string;
+  color?: string;
+  max_drones?: number;
+  enabled?: boolean;
+}
+
+export interface DroneFleetAssignmentRequest {
+  drone_id: number;
+  notes?: string;
+}
+
+export interface DroneFleetAssignmentResponse {
+  success: boolean;
+  fleet_id: number;
+  drone_id: number;
+  message: string;
+}
+
+export interface BulkFleetAssignmentRequest {
+  drone_ids: number[];
+  notes?: string;
+}
+
+// ============================================================================
+// Anchor Types
+// ============================================================================
+
+export interface Anchor {
+  id: number;
+  anchor_id: number;
+  name: string;
+  x: number;
+  y: number;
+  z: number;
+  mode: string;
+  status: string;
+  last_seen: string | null;
+  battery_level: number | null;
+  firmware_version: string | null;
+  notes: string | null;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AnchorCreateRequest {
+  anchor_id: number;
+  name: string;
+  x: number;
+  y: number;
+  z: number;
+  mode: string;
+  firmware_version?: string;
+  notes?: string;
+}
+
+export interface AnchorUpdateRequest {
+  name?: string;
+  x?: number;
+  y?: number;
+  z?: number;
+  mode?: string;
+  status?: string;
+  battery_level?: number;
+  firmware_version?: string;
+  notes?: string;
+  enabled?: boolean;
+}
+
+export interface AnchorPositionUpdateRequest {
+  x: number;
+  y: number;
+  z: number;
+}
+
+export interface AnchorSystemStatus {
+  total_anchors: number;
+  online_anchors: number;
+  offline_anchors: number;
+  calibrating_anchors: number;
+  error_anchors: number;
+  positioning_mode: string;
+  system_ready: boolean;
+  coverage_area?: {
+    x_min: number;
+    x_max: number;
+    y_min: number;
+    y_max: number;
+    z_min: number;
+    z_max: number;
+  };
+}
+
+export interface BulkAnchorCreateRequest {
+  anchors: AnchorCreateRequest[];
 }

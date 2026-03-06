@@ -1,20 +1,31 @@
 'use client';
 
 import { useState } from 'react';
-import { Battery, Signal, AlertTriangle, WifiOff, Lightbulb, Zap } from 'lucide-react';
+import { Battery, Signal, AlertTriangle, WifiOff, Lightbulb, Zap, MoreVertical, Trash2, Users } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useMutation } from '@tanstack/react-query';
 import { setLEDColor, blinkLED, turnOffLED } from '@/lib/api';
-import type { Drone } from '@/types';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import type { Drone, Fleet } from '@/types';
 
 /**
- * DroneCard - Displays individual drone status with visual indicators.
+ * DroneCard - Displays individual drone status with visual indicators and actions.
  */
 interface DroneCardProps {
   drone: Drone;
+  fleets?: Fleet[];
   onClick?: () => void;
+  onAssignToFleet?: (fleetId: number) => void;
+  onRemoveFromFleet?: (fleetId: number) => void;
+  onUnregister?: () => void;
 }
 
 /**
@@ -44,20 +55,26 @@ function getConnectionColor(quality: number | null): string {
 function getStateVariant(state: string): 'default' | 'secondary' | 'destructive' | 'outline' {
   switch (state) {
     case 'flying':
+    case 'busy':
       return 'default';
     case 'idle':
       return 'secondary';
     case 'offline':
+      return 'destructive';
+    case 'error':
       return 'destructive';
     default:
       return 'outline';
   }
 }
 
-export function DroneCard({ drone, onClick }: DroneCardProps) {
+export function DroneCard({ drone, fleets, onClick, onAssignToFleet, onRemoveFromFleet, onUnregister }: DroneCardProps) {
   const hasError = drone.state === 'offline' || drone.connection_quality === null;
   const [ledOpen, setLedOpen] = useState(false);
   const [ledStatus, setLedStatus] = useState<string | null>(null);
+
+  // Get fleet info
+  const fleet = fleets?.find(f => f.id === drone.fleet_id);
 
   // LED color presets
   const ledColors = [
@@ -125,10 +142,80 @@ export function DroneCard({ drone, onClick }: DroneCardProps) {
     >
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-lg">{drone.name}</CardTitle>
-          {hasError && (
-            <AlertTriangle className="h-5 w-5 text-yellow-500" />
-          )}
+          <div className="flex items-center gap-2">
+            <CardTitle className="text-lg">{drone.name}</CardTitle>
+            {fleet && (
+              <div className="flex items-center gap-1">
+                <div 
+                  className="w-3 h-3 rounded-full" 
+                  style={{ backgroundColor: fleet.color }}
+                />
+                <span className="text-xs text-muted-foreground">{fleet.name}</span>
+              </div>
+            )}
+          </div>
+          <div className="flex items-center gap-1">
+            {hasError && (
+              <AlertTriangle className="h-5 w-5 text-yellow-500" />
+            )}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                  <MoreVertical className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {onAssignToFleet && !drone.fleet_id && fleets && fleets.length > 0 && (
+                  <>
+                    <DropdownMenuItem disabled className="text-xs text-muted-foreground">
+                      Assign to Fleet
+                    </DropdownMenuItem>
+                    {fleets.map((f) => (
+                      <DropdownMenuItem 
+                        key={f.id} 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onAssignToFleet(f.id);
+                        }}
+                      >
+                        <div className="flex items-center gap-2">
+                          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: f.color }} />
+                          {f.name}
+                        </div>
+                      </DropdownMenuItem>
+                    ))}
+                    <DropdownMenuSeparator />
+                  </>
+                )}
+                {onRemoveFromFleet && drone.fleet_id && (
+                  <DropdownMenuItem 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onRemoveFromFleet(drone.fleet_id!);
+                    }}
+                  >
+                    <Users className="mr-2 h-4 w-4" />
+                    Remove from Fleet
+                  </DropdownMenuItem>
+                )}
+                {onUnregister && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem 
+                      className="text-destructive"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onUnregister();
+                      }}
+                    >
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Unregister
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
         <Badge variant={getStateVariant(drone.state)}>
           {drone.state}

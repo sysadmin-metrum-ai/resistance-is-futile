@@ -104,6 +104,9 @@ func runSolve(cmd *cobra.Command, args []string) error {
 		return io.WriteJSON(out, ioCoords, valRows, warnings, solvePrecision)
 	}
 	if solveCrazyflie {
+		if !solveZDown {
+			fmt.Fprintln(os.Stderr, "Note: for Crazyflie/LPS NED, use --z-down (see COORDINATES.md)")
+		}
 		io.WriteCrazyflie(out, ioCoords, solvePrecision)
 		return nil
 	}

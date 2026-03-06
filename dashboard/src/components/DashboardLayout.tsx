@@ -39,6 +39,12 @@ export function DashboardLayout({ children, title = 'Drone Swarm Control' }: Das
             <Button variant="ghost" asChild>
               <Link href="/missions">Missions</Link>
             </Button>
+            <Button variant="ghost" asChild>
+              <Link href="/fleets">Fleets</Link>
+            </Button>
+            <Button variant="ghost" asChild>
+              <Link href="/anchors">Anchors</Link>
+            </Button>
           </nav>
         </div>
       </header>

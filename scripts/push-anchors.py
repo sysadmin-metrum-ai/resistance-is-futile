@@ -13,7 +13,10 @@ Requirements:
     pip install cflib
 
 The anchor coordinates should be provided in the format output by:
-    drone-acharya solve distances.csv --crazyflie
+    drone-acharya solve distances.csv --crazyflie --z-down
+
+For Crazyflie/LPS, generate the anchor file with --z-down (and optionally --rotate-ned,
+--offset-*) so coordinates are in NED when pushed to the nodes.
 
 Example anchors.py format:
     anchor_positions = {
