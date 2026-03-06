@@ -40,3 +40,9 @@
 *.so filter=lfs diff=lfs merge=lfs -text
 *.dylib filter=lfs diff=lfs merge=lfs -text
 *.bin filter=lfs diff=lfs merge=lfs -text
+dashboard/public/file.svg !filter
+dashboard/public/globe.svg !filter
+dashboard/public/next.svg !filter
+dashboard/public/vercel.svg !filter
+dashboard/public/window.svg !filter
+dashboard/src/app/favicon.ico !filter
