@@ -25,7 +25,7 @@ class AnchorCreateRequest(BaseModel):
     name: str = Field(..., description="Anchor name (e.g., 'anchor-northwest')")
     x: float = Field(..., description="X coordinate in meters")
     y: float = Field(..., description="Y coordinate in meters")
-    z: float = Field(..., description="Z coordinate in meters (height)")
+    z: float = Field(..., description="Z coordinate in meters (NED: positive = down)")
     mode: str = Field("TWR", description="Positioning mode: TWR, TDoA2, TDoA3")
     firmware_version: Optional[str] = Field(None, description="Firmware version")
     notes: Optional[str] = Field(None, description="Installation notes")
@@ -37,7 +37,7 @@ class AnchorUpdateRequest(BaseModel):
     name: Optional[str] = Field(None, description="Anchor name")
     x: Optional[float] = Field(None, description="X coordinate in meters")
     y: Optional[float] = Field(None, description="Y coordinate in meters")
-    z: Optional[float] = Field(None, description="Z coordinate in meters (height)")
+    z: Optional[float] = Field(None, description="Z coordinate in meters (NED: positive = down)")
     mode: Optional[str] = Field(None, description="Positioning mode: TWR, TDoA2, TDoA3")
     status: Optional[str] = Field(
         None, description="Status: online, offline, calibrating, error"
@@ -55,7 +55,7 @@ class AnchorPositionUpdateRequest(BaseModel):
 
     x: float = Field(..., description="X coordinate in meters")
     y: float = Field(..., description="Y coordinate in meters")
-    z: float = Field(..., description="Z coordinate in meters (height)")
+    z: float = Field(..., description="Z coordinate in meters (NED: positive = down)")
 
 
 class AnchorResponse(BaseModel):

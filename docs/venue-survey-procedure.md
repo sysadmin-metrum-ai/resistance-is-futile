@@ -114,7 +114,7 @@ N3
 
 ### Step 4: Compute Anchor Coordinates
 
-Run drone-acharya solve to compute 3D coordinates:
+Run drone-acharya solve to compute 3D coordinates. For Crazyflie/LPS, coordinates must be in **NED** (North-East-Down):
 
 ```bash
 # Basic output
@@ -123,8 +123,11 @@ drone-acharya solve distances.csv
 # With validation (recommended)
 drone-acharya solve distances.csv --validate
 
-# Output as Python dict (for scripts)
-drone-acharya solve distances.csv --crazyflie
+# Output for Crazyflie/LPS (NED; recommended for push-anchors)
+drone-acharya solve distances.csv --crazyflie --z-down --validate
+
+# If the venue is not aligned with the survey frame, add --rotate-ned and/or --offset-x/y/z
+# See tools/drone-acharya/COORDINATES.md for frame and transformation options.
 
 # JSON output (for programmatic use)
 drone-acharya solve distances.csv --json

@@ -149,6 +149,8 @@ curl -X POST http://localhost:8000/drones/discover
 
 ## Anchor (Loco Positioning) Management
 
+Anchor positions use **NED** (North-East-Down): X = North, Y = East, Z = Down (positive Z = down). If your source is Z-up (e.g. height above ground), use drone-acharya with `--z-down` or convert before posting.
+
 ### List All Anchors
 
 ```bash

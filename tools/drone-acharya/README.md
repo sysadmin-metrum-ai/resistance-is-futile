@@ -54,8 +54,11 @@ N3
 drone-acharya solve distances.csv
 drone-acharya solve distances.csv -o coords.csv
 drone-acharya solve distances.csv --crazyflie    # output crazyflie-lib-python config
+drone-acharya solve distances.csv --crazyflie --z-down --validate   # recommended for Loco Positioning / Crazyflie (NED)
 drone-acharya solve distances.csv --json         # structured output
 ```
+
+For Loco Positioning / Crazyflie, use `--z-down` (and optionally `--rotate-ned`, `--offset-*`); see **COORDINATES.md** for frame details.
 
 ## Flags
 
@@ -73,6 +76,8 @@ drone-acharya solve distances.csv --json         # structured output
 | `--offset-y` | | 0 | Y translation (meters) |
 | `--offset-z` | | 0 | Z translation (meters) |
 | `--z-down` | | false | Flip Z-axis (+Z up → +Z down for NED) |
+
+With `--crazyflie`, output is raw (acharya frame) unless you also use `--z-down` and any transform flags above.
 
 ## Algorithm
 

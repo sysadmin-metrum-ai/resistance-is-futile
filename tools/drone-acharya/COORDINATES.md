@@ -187,3 +187,5 @@ drone-acharya solve distances.csv --crazyflie --rotate-ned 45 --z-down --offset-
 2. Apply a rotation + translation transformation after the fact
 
 The current `--crazyflie` flag outputs raw coordinates with no transformation — it's your responsibility to ensure measurements align with NED or apply the transform.
+
+**Recommendation:** When using the output with Crazyflie/LPS, always pass **`--z-down`** (and optionally `--rotate-ned` and offsets) so the coordinates are in NED.
