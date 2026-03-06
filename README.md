@@ -189,6 +189,13 @@ The test script waits for the Kalman filter position estimate to stabilize befor
 | Position drifting wildly | Check mode match (TWR for 4 anchors), verify anchor XYZ positions are correct |
 | Anchor shows 0,0,0 position | Enter and write correct positions via cfclient Loco tab |
 
+## Documentation
+
+- **Venue survey (laser → drone-acharya → push-anchors):** [docs/venue-survey-procedure.md](docs/venue-survey-procedure.md)
+- **drone-acharya (template, solve, NED):** [tools/drone-acharya/README.md](tools/drone-acharya/README.md), [tools/drone-acharya/COORDINATES.md](tools/drone-acharya/COORDINATES.md)
+- **Drone API usage:** [docs/API_USAGE.md](docs/API_USAGE.md)
+- **Infographic prompts** (for generating visual guides): [docs/infographic-prompt-location-map-drone-acharya.md](docs/infographic-prompt-location-map-drone-acharya.md), [docs/infographic-prompt-rotations-translations.md](docs/infographic-prompt-rotations-translations.md), [docs/infographic-prompt-test-flight-after-calibration.md](docs/infographic-prompt-test-flight-after-calibration.md)
+
 ## Architecture
 
 ```

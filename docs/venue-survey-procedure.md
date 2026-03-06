@@ -224,11 +224,12 @@ If push-anchors.py fails to connect:
 
 ## References
 
-- drone-acharya: `tools/drone-acharya/README.md`
-- push-anchors.py: `scripts/push-anchors.py --help`
-- verify-position.py: `scripts/verify-position.py --help`
-- Loco Positioning documentation: https://www.bitcraze.io/documentation/system/positioning/
+- **drone-acharya:** `tools/drone-acharya/README.md`, `tools/drone-acharya/COORDINATES.md` (NED frame, `--rotate-ned`, `--offset-*`, `--z-down`)
+- **Scripts:** `scripts/push-anchors.py --help`, `scripts/verify-position.py --help`
+- **API:** `docs/API_USAGE.md` (Drone API, anchor positions in NED)
+- **Infographic prompts** (for generating visual guides): `docs/infographic-prompt-location-map-drone-acharya.md`, `docs/infographic-prompt-rotations-translations.md`, `docs/infographic-prompt-test-flight-after-calibration.md`
+- **Loco Positioning:** https://www.bitcraze.io/documentation/system/positioning/
 
 ---
 
-*Last updated: 2026-02-28*
+*Last updated: 2026-03-06*
