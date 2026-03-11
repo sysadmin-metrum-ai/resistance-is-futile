@@ -38,17 +38,22 @@ Example anchors.json format:
 import argparse
 import json
 import sys
+import time
+from threading import Event
 from pathlib import Path
 from typing import Any
 
 # Try to import cflib - will fail gracefully with helpful message
 try:
     from cflib import crazyflie
+    from cflib.crazyflie.mem import MemoryElement
     from cflib.crtp import init_drivers
-    from cflib.utils import uri_to_str
+    from lpslib.lopoanchor import LoPoAnchor
     CFLIB_AVAILABLE = True
 except ImportError:
     CFLIB_AVAILABLE = False
+    LoPoAnchor = None
+    MemoryElement = None
 
 
 def load_anchors_python(filepath: Path) -> dict[int, tuple[float, float, float]]:
@@ -112,6 +117,11 @@ def push_anchors(
     anchors: dict[int, tuple[float, float, float]],
     radio_address: str = "0/80/2M",
     verbose: bool = False,
+    verify: bool = True,
+    verify_tolerance_m: float = 0.05,
+    verify_timeout_s: float = 8.0,
+    write_retries: int = 3,
+    verify_retries: int = 2,
 ) -> dict[int, bool]:
     """
     Push anchor coordinates to Loco Positioning nodes.
@@ -121,6 +131,11 @@ def push_anchors(
         radio_address: Radio address in format "channel/address/data_rate"
                      e.g., "0/80/2M" (channel=0, address=80, 2M data rate)
         verbose: Enable verbose output
+        verify: Read back anchor positions after write
+        verify_tolerance_m: Max allowed 3D distance error for readback
+        verify_timeout_s: Max seconds to wait per memory read operation
+        write_retries: Retries per anchor write after first attempt
+        verify_retries: Verification retry loops after first readback
 
     Returns:
         Dictionary mapping anchor ID to success status
@@ -164,22 +179,71 @@ def push_anchors(
         if verbose:
             print("Link established")
 
-        # Push each anchor's position using LPP
-        # LPP anchor position is set via the LPP positioning protocol
-        for anchor_id, (x, y, z) in anchors.items():
-            try:
-                # Send LPP anchor position update
-                # This uses the Loco Positioning Protocol to set anchor position
-                # The anchor ID in LPS is typically 0-7
-                _set_anchor_position(cf, anchor_id, x, y, z, verbose)
-                results[anchor_id] = True
+        anchor_bridge = LoPoAnchor(cf)
 
+        # Push each anchor's position
+        for anchor_id, (x, y, z) in anchors.items():
+            write_ok = False
+            last_err: Exception | None = None
+            for attempt in range(write_retries + 1):
+                try:
+                    _set_anchor_position(anchor_bridge, anchor_id, x, y, z, verbose)
+                    write_ok = True
+                    break
+                except Exception as e:
+                    last_err = e
+                    if verbose:
+                        print(
+                            f"  Anchor {anchor_id}: write attempt {attempt + 1}/{write_retries + 1} failed: {e}",
+                            file=sys.stderr,
+                        )
+                    time.sleep(0.2)
+            results[anchor_id] = write_ok
+            if write_ok:
                 if verbose:
                     print(f"  Anchor {anchor_id}: ({x:.3f}, {y:.3f}, {z:.3f}) - SUCCESS")
+            else:
+                print(f"  Anchor {anchor_id}: FAILED - {last_err}", file=sys.stderr)
 
-            except Exception as e:
+        if verify and all(results.values()):
+            if verbose:
+                print("Running readback verification...")
+            failed_verify: dict[int, str] = {}
+            for verify_attempt in range(verify_retries + 1):
+                failed_verify.clear()
+                readback_positions, valid_flags = _read_anchor_positions(cf, verify_timeout_s, verbose)
+                for anchor_id, (x, y, z) in anchors.items():
+                    read_pos = readback_positions.get(anchor_id)
+                    is_valid = valid_flags.get(anchor_id, False)
+                    if read_pos is None or not is_valid:
+                        failed_verify[anchor_id] = "missing/invalid readback"
+                        continue
+                    err = _distance3(read_pos, (x, y, z))
+                    if err > verify_tolerance_m:
+                        failed_verify[anchor_id] = (
+                            f"error {err:.3f}m exceeds {verify_tolerance_m:.3f}m"
+                        )
+                    elif verbose:
+                        rx, ry, rz = read_pos
+                        print(
+                            f"  Anchor {anchor_id}: verify ok (readback=({rx:.3f}, {ry:.3f}, {rz:.3f}), err={err:.3f}m)"
+                        )
+                if not failed_verify:
+                    break
+                if verify_attempt < verify_retries:
+                    if verbose:
+                        print(
+                            f"Verification pass {verify_attempt + 1}/{verify_retries + 1} failed for "
+                            f"{len(failed_verify)} anchors; rewriting failed anchors and retrying..."
+                        )
+                    for anchor_id in sorted(failed_verify.keys()):
+                        x, y, z = anchors[anchor_id]
+                        _set_anchor_position(anchor_bridge, anchor_id, x, y, z, verbose)
+                    time.sleep(0.5)
+
+            for anchor_id, reason in failed_verify.items():
                 results[anchor_id] = False
-                print(f"  Anchor {anchor_id}: FAILED - {e}", file=sys.stderr)
+                print(f"  Anchor {anchor_id}: VERIFY FAILED - {reason}", file=sys.stderr)
 
     finally:
         cf.close_link()
@@ -188,7 +252,7 @@ def push_anchors(
 
 
 def _set_anchor_position(
-    cf: crazyflie.Crazyflie,
+    anchor_bridge: Any,
     anchor_id: int,
     x: float,
     y: float,
@@ -196,49 +260,76 @@ def _set_anchor_position(
     verbose: bool = False,
 ) -> None:
     """
-    Set anchor position using Loco Positioning Protocol.
+    Set anchor position using LoPoAnchor over the Crazyflie link.
 
-    This function sends LPP packets to configure an anchor's position.
-    The exact implementation depends on the cflib version and LPS setup.
-
-    Common approaches:
-    1. Using LPP (Loco Positioning Protocol) directly
-    2. Using the Crazyflie as a bridge to configure anchors
-
-    Note: Full LPP implementation requires understanding the specific
-    anchor firmware version and LPP channel used.
+    We send each position update multiple times since this path is
+    best-effort and does not include explicit per-anchor ACKs.
     """
-    # LPP packet structure for anchor position:
-    # LPP type 1 = Anchor position
-    # Format: [type, anchor_id, x, y, z]
-    #
-    # This is a simplified implementation. In practice, you may need
-    # to use cflib's LPP support or send custom packets.
-
-    # Convert to fixed-point format (LPS uses mm precision)
-    x_mm = int(x * 1000)
-    y_mm = int(y * 1000)
-    z_mm = int(z * 1000)
-
-    # LPP data for anchor position
-    # Type 1 = LPP_ANCHOR_POSITION
-    lpp_data = bytes([1, anchor_id & 0xFF]) + x_mm.to_bytes(2, 'little', signed=True) + y_mm.to_bytes(2, 'little', signed=True) + z_mm.to_bytes(2, 'little', signed=True)
-
-    # Send via LPP channel
-    # Note: This is a placeholder - actual implementation depends on cflib version
     if verbose:
-        print(f"    Sending LPP: anchor={anchor_id} pos=({x_mm}mm, {y_mm}mm, {z_mm}mm)")
+        print(f"    Sending LoPoAnchor position: anchor={anchor_id} pos=({x:.3f}, {y:.3f}, {z:.3f})")
 
-    # Try using cflib's LPP support if available
-    try:
-        # Modern cflib versions have LPP support
-        from cflib.lps import lpp
-        lpp.send_anchor_position(cf, anchor_id, x, y, z)
-    except (ImportError, AttributeError):
-        # Fallback: send raw LPP packet
-        # This requires the LPS anchor to be in programming mode
-        # and connected via the Crazyradio
-        pass
+    for _ in range(3):
+        anchor_bridge.set_position(anchor_id, (x, y, z))
+        time.sleep(0.05)
+
+
+def _distance3(a: tuple[float, float, float], b: tuple[float, float, float]) -> float:
+    dx = a[0] - b[0]
+    dy = a[1] - b[1]
+    dz = a[2] - b[2]
+    return (dx * dx + dy * dy + dz * dz) ** 0.5
+
+
+def _wait(event: Event, timeout_s: float, name: str) -> None:
+    if not event.wait(timeout_s):
+        raise RuntimeError(f"Timed out waiting for {name}")
+
+
+def _read_anchor_positions(
+    cf: Any,
+    timeout_s: float,
+    verbose: bool = False,
+) -> tuple[dict[int, tuple[float, float, float]], dict[int, bool]]:
+    """Read anchor positions from Loco memory (v2 preferred, fallback v1)."""
+    refresh_done = Event()
+    refresh_failed = Event()
+
+    cf.mem.refresh(refresh_done.set, refresh_failed.set)
+    _wait(refresh_done, timeout_s, "memory refresh")
+    if refresh_failed.is_set():
+        raise RuntimeError("Memory refresh failed")
+
+    loco2_mems = cf.mem.get_mems(MemoryElement.TYPE_LOCO2)
+    if loco2_mems:
+        mem = loco2_mems[0]
+        ids_done = Event()
+        data_done = Event()
+        mem.update_id_list(lambda _: ids_done.set())
+        _wait(ids_done, timeout_s, "Loco2 id list")
+        mem.update_data(lambda _: data_done.set())
+        _wait(data_done, timeout_s, "Loco2 anchor data")
+        positions = {aid: tuple(mem.anchor_data[aid].position) for aid in mem.anchor_data}
+        valid_flags = {aid: bool(mem.anchor_data[aid].is_valid) for aid in mem.anchor_data}
+        if verbose:
+            print(f"Read back {len(positions)} anchors from Loco2 memory")
+        return positions, valid_flags
+
+    loco_mems = cf.mem.get_mems(MemoryElement.TYPE_LOCO)
+    if loco_mems:
+        mem = loco_mems[0]
+        done = Event()
+        mem.update(lambda _: done.set())
+        _wait(done, timeout_s, "Loco anchor data")
+        positions = {}
+        valid_flags = {}
+        for idx, anchor in enumerate(mem.anchor_data):
+            positions[idx] = tuple(anchor.position)
+            valid_flags[idx] = bool(anchor.is_valid)
+        if verbose:
+            print(f"Read back {len(positions)} anchors from Loco memory")
+        return positions, valid_flags
+
+    raise RuntimeError("No Loco memory found (TYPE_LOCO/TYPE_LOCO2)")
 
 
 def main():
@@ -269,6 +360,36 @@ def main():
         action="store_true",
         help="Parse anchors but don't push to hardware",
     )
+    parser.add_argument(
+        "--verify",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Read back anchor positions after write (default: enabled)",
+    )
+    parser.add_argument(
+        "--verify-tolerance",
+        type=float,
+        default=0.05,
+        help="Allowed 3D readback error in meters (default: 0.05)",
+    )
+    parser.add_argument(
+        "--verify-timeout",
+        type=float,
+        default=8.0,
+        help="Timeout (seconds) for each memory-read stage (default: 8.0)",
+    )
+    parser.add_argument(
+        "--write-retries",
+        type=int,
+        default=3,
+        help="Retries per anchor write after first attempt (default: 3)",
+    )
+    parser.add_argument(
+        "--verify-retries",
+        type=int,
+        default=2,
+        help="Verification retries after first readback (default: 2)",
+    )
 
     args = parser.parse_args()
 
@@ -290,7 +411,19 @@ def main():
 
     # Push anchors
     print(f"\nPushing anchors via radio {args.radio}...")
-    results = push_anchors(anchors, args.radio, args.verbose)
+    if args.write_retries < 0 or args.verify_retries < 0:
+        print("ERROR: --write-retries and --verify-retries must be >= 0", file=sys.stderr)
+        sys.exit(2)
+    results = push_anchors(
+        anchors,
+        args.radio,
+        args.verbose,
+        verify=args.verify,
+        verify_tolerance_m=args.verify_tolerance,
+        verify_timeout_s=args.verify_timeout,
+        write_retries=args.write_retries,
+        verify_retries=args.verify_retries,
+    )
 
     # Summary
     success_count = sum(1 for v in results.values() if v)
