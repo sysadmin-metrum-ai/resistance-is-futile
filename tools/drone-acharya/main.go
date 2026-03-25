@@ -9,16 +9,19 @@ func main() {
 	root := &cobra.Command{
 		Use:   "drone-acharya",
 		Short: "Crazyflie Loco positioning node coordinate calculator",
-		Long: `Computes 3D coordinates for Loco positioning nodes from pairwise distance
-measurements using trilateration.
+		Long: `Computes 3D coordinates for Loco positioning nodes from JSONL graph
+measurements using the graph-based solver.
 
-  Step 1: Generate a template, fill in measured distances (meters).
-  Step 2: Run solve on the filled file to get node coordinates.
+  Step 1: Create a graph.jsonl with anchor/latent nodes and distance edges.
+  Step 2: Run solve on the graph file to get node coordinates.
+  Step 3: Export anchors for Crazyflie/LPS with --crazyflie --z-down.
 
 Examples:
-  drone-acharya template -n 6 -f csv -o distances.csv
-  drone-acharya solve distances.csv
-  drone-acharya solve distances.csv -o coords.csv --crazyflie`,
+  drone-acharya solve graph.jsonl
+  drone-acharya solve graph.jsonl --validate
+  drone-acharya solve graph.jsonl --crazyflie --z-down
+  make build
+  make dist`,
 	}
 	root.AddCommand(cmd.TemplateCmd(), cmd.SolveCmd())
 	root.Execute()
