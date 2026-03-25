@@ -145,43 +145,24 @@ def push_anchors(
         print("Install it with: pip install cflib", file=sys.stderr)
         sys.exit(1)
 
-    # Initialize Crazyradio drivers
     init_drivers()
 
     results: dict[int, bool] = {}
-
-    # Convert radio address string to URI
-    # Format: "channel/address/data_rate" -> "radio://0/80/2M"
-    uri = f"radio://{radio_address.replace('/', '/')}"
+    uri = f"radio://{radio_address}"
 
     if verbose:
-        print(f"Connecting to radio at {uri}")
+        print(f"Connecting to Crazyflie at {uri}")
         print(f"Pushing coordinates for {len(anchors)} anchors...")
 
-    # Create a Crazyflie instance to communicate with anchors
-    # Note: We use Crazyflie as a bridge to send LPP packets to anchors
-    cf = crazyflie.Crazyflie(uri)
+    from cflib.crazyflie.syncCrazyflie import SyncCrazyflie
 
-    # Open link
-    if verbose:
-        print("Opening link...")
-
-    cf.open_link()
-
-    try:
-        # Give time for connection to establish
-        import time
-        time.sleep(0.5)
-
-        if not cf.link_is_up():
-            raise RuntimeError("Failed to establish link with radio")
-
+    with SyncCrazyflie(uri, cf=crazyflie.Crazyflie(rw_cache="./cache")) as scf:
+        cf = scf.cf
         if verbose:
             print("Link established")
 
         anchor_bridge = LoPoAnchor(cf)
 
-        # Push each anchor's position
         for anchor_id, (x, y, z) in anchors.items():
             write_ok = False
             last_err: Exception | None = None
@@ -244,9 +225,6 @@ def push_anchors(
             for anchor_id, reason in failed_verify.items():
                 results[anchor_id] = False
                 print(f"  Anchor {anchor_id}: VERIFY FAILED - {reason}", file=sys.stderr)
-
-    finally:
-        cf.close_link()
 
     return results
 

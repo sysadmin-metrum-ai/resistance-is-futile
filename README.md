@@ -138,6 +138,41 @@ In cfclient, go to the **Parameters** tab and set `loco.mode`:
 
 Set to **1** for TWR setups.
 
+### Caution: TDoA3 debug params can cause large drift
+
+During troubleshooting we temporarily changed estimator tuning:
+
+- `tdoa3.stddev=0.8` (from default ~`0.15`)
+- `kalman.robustTdoa=1`
+
+This made the estimator under-weight UWB corrections and produced large stationary drift (especially Z) even though anchors and link were otherwise healthy.
+
+For normal TDoA3 operation, reset to:
+
+```bash
+# keep mode forced to TDoA3
+python - <<'PY'
+import time
+import cflib.crtp
+from cflib.crazyflie import Crazyflie
+from cflib.crazyflie.syncCrazyflie import SyncCrazyflie
+
+URI = "radio://0/90/2M"
+cflib.crtp.init_drivers()
+with SyncCrazyflie(URI, cf=Crazyflie(rw_cache="./cache")) as scf:
+    cf = scf.cf
+    cf.param.set_value("loco.mode", "3")
+    cf.param.set_value("tdoa3.stddev", "0.15")
+    cf.param.set_value("kalman.robustTdoa", "0")
+    time.sleep(0.3)
+    print("loco.mode=", cf.param.get_value("loco.mode"))
+    print("tdoa3.stddev=", cf.param.get_value("tdoa3.stddev"))
+    print("kalman.robustTdoa=", cf.param.get_value("kalman.robustTdoa"))
+PY
+```
+
+Recommended: run `scripts/lps-preflight.py` before flight and treat `NO-GO` as a hard stop.
+
 ## 8. Launch cfclient
 
 The 3D view requires software rendering on some systems to avoid vispy/OpenGL errors:
@@ -186,7 +221,7 @@ The test script waits for the Kalman filter position estimate to stabilize befor
 | `eglSwapBuffers` spam | Launch with `LIBGL_ALWAYS_SOFTWARE=1 cfclient` |
 | Connection drops ("Too many packets lost") | Use `LIBGL_ALWAYS_SOFTWARE=1`, try `radio://0/80/1M`, avoid USB 3.0 ports |
 | Loco tab shows no anchors | Verify nodes are powered, in same mode as deck, and within UWB range |
-| Position drifting wildly | Check mode match (TWR for 4 anchors), verify anchor XYZ positions are correct |
+| Position drifting wildly | Check mode match (TWR for 4 anchors), verify anchor XYZ positions are correct, and reset `tdoa3.stddev=0.15` + `kalman.robustTdoa=0` if they were changed for debugging |
 | Anchor shows 0,0,0 position | Enter and write correct positions via cfclient Loco tab |
 
 ## Documentation
