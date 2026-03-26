@@ -5,6 +5,7 @@ Usage:
     python scripts/radio-config.py scan          # Find drones on all channels
     python scripts/radio-config.py assign <ch>   # Assign current drone to channel <ch>
     python scripts/radio-config.py list          # List all known drones
+    python scripts/radio-config.py clear         # Wipe DB for fresh session
 """
 import sys
 import time
@@ -143,6 +144,14 @@ def list_drones():
         print(f"{rev0:<15} {name:<15} {ch:<10} radio://0/{ch}/{DATA_RATE:<8} {seen}")
 
 
+def clear():
+    db = get_db()
+    count = db.execute("SELECT COUNT(*) FROM drones").fetchone()[0]
+    db.execute("DELETE FROM drones")
+    db.commit()
+    print(f"Cleared {count} drone(s) from DB.")
+
+
 if __name__ == "__main__":
     if len(sys.argv) < 2:
         print(__doc__)
@@ -158,6 +167,8 @@ if __name__ == "__main__":
         assign(sys.argv[2])
     elif cmd == "list":
         list_drones()
+    elif cmd == "clear":
+        clear()
     else:
         print(f"Unknown command: {cmd}")
         print(__doc__)

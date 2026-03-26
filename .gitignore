@@ -32,6 +32,9 @@ Thumbs.db
 # Project specific
 logs/
 *.log
+cache/
+*.zip
+drone-acharya_linux_*
 
 # drone-acharya
 tools/drone-acharya/drone-acharya

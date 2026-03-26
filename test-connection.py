@@ -4,7 +4,12 @@ from cflib.crazyflie import Crazyflie
 from cflib.crazyflie.syncCrazyflie import SyncCrazyflie
 
 cflib.crtp.init_drivers()
-URI = "radio://0/90/2M"
+
+available = cflib.crtp.scan_interfaces()
+if not available:
+    print("No Crazyflie found.")
+    sys.exit(1)
+URI = available[0][0]
 
 print("Scanning for Crazyflie drones...")
 available = cflib.crtp.scan_interfaces()
