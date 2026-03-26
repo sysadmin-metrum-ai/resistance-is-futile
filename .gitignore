@@ -34,6 +34,8 @@ logs/
 *.log
 cache/
 *.zip
+*.jsonl
+*.csv
 drone-acharya_linux_*
 
 # drone-acharya
