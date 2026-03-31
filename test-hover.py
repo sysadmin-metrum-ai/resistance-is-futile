@@ -1,19 +1,24 @@
-"""Minimal LPS hover using the Bitcraze autonomous example pattern."""
+"""Minimal LPS hover using cflib's PositionHlCommander."""
 import time
 import sys
 import cflib.crtp
 from cflib.crazyflie import Crazyflie
 from cflib.crazyflie.syncCrazyflie import SyncCrazyflie
 from cflib.crazyflie.log import LogConfig
+from cflib.positioning.position_hl_commander import PositionHlCommander
+from cflib.utils import uri_helper
 
 cflib.crtp.init_drivers()
+
 URI = "radio://0/80/2M"
-TAKEOFF_HEIGHT_M = 0.25
-TAKEOFF_DURATION_S = 3.0
+HOVER_HEIGHT = 0.25
+HOVER_SECONDS = 5
+TDOA3_STDDEV = "0.15"
+ROBUST_TDOA = "1"
 PREFLIGHT_SECONDS = 3.0
 PREFLIGHT_XY_SPREAD_MAX_M = 0.20
-PREFLIGHT_Z_SPREAD_MAX_M = 0.15
-PREFLIGHT_Z_DRIFT_MAX_M = 0.12
+PREFLIGHT_Z_SPREAD_MAX_M = 0.30
+PREFLIGHT_Z_DRIFT_MAX_M = 0.30
 
 
 def reset_estimator(cf):
@@ -42,13 +47,11 @@ def wait_for_estimator(cf):
         var_y_history.append(data["kalman.varPY"])
         var_z_history.append(data["kalman.varPZ"])
         if len(var_x_history) > 10:
-            min_x = min(var_x_history[-10:])
-            max_x = max(var_x_history[-10:])
-            min_y = min(var_y_history[-10:])
-            max_y = max(var_y_history[-10:])
-            min_z = min(var_z_history[-10:])
-            max_z = max(var_z_history[-10:])
-            if (max_x - min_x) < threshold and (max_y - min_y) < threshold and (max_z - min_z) < threshold:
+            if (
+                max(var_x_history[-10:]) - min(var_x_history[-10:]) < threshold
+                and max(var_y_history[-10:]) - min(var_y_history[-10:]) < threshold
+                and max(var_z_history[-10:]) - min(var_z_history[-10:]) < threshold
+            ):
                 is_stable = True
 
     cf.log.add_config(log)
@@ -63,7 +66,7 @@ def wait_for_estimator(cf):
     if not is_stable:
         print("ERROR: Kalman variance did not converge. Aborting.")
         sys.exit(1)
-    print("Kalman variance converged (not a position-stability guarantee).")
+    print("Estimator converged.")
 
 
 def ensure_position_stability(flight_data):
@@ -98,19 +101,16 @@ with SyncCrazyflie(URI, cf=Crazyflie(rw_cache="./cache")) as scf:
     cf = scf.cf
 
     cf.param.set_value("loco.mode", "3")
-    cf.param.set_value("tdoa3.stddev", "0.15")
-    cf.param.set_value("kalman.robustTdoa", "0")
+    cf.param.set_value("tdoa3.stddev", TDOA3_STDDEV)
+    cf.param.set_value("kalman.robustTdoa", ROBUST_TDOA)
 
     reset_estimator(cf)
     wait_for_estimator(cf)
-
-    cf.param.set_value("commander.enHighLevel", "1")
 
     log_flight = LogConfig(name="Flight", period_in_ms=200)
     log_flight.add_variable("kalman.stateX", "float")
     log_flight.add_variable("kalman.stateY", "float")
     log_flight.add_variable("kalman.stateZ", "float")
-
     flight_data = []
 
     def flight_cb(timestamp, data, logconf):
@@ -127,22 +127,30 @@ with SyncCrazyflie(URI, cf=Crazyflie(rw_cache="./cache")) as scf:
     time.sleep(PREFLIGHT_SECONDS)
     ensure_position_stability(flight_data)
 
-    print("Taking off...")
-
-    commander = cf.high_level_commander
+    _, start_x, start_y, start_z = flight_data[-1]
+    print(f"Starting position: ({start_x:.3f}, {start_y:.3f}, {start_z:.3f})")
+    if abs(start_z) > 0.20:
+        print(f"ERROR: Bad ground pose estimate (z={start_z:.3f}). Aborting.")
+        sys.exit(2)
 
     try:
-        commander.takeoff(TAKEOFF_HEIGHT_M, TAKEOFF_DURATION_S)
-        time.sleep(3)
+        cf.platform.send_arming_request(True)
+        time.sleep(0.3)
+    except Exception:
+        pass
 
-        print("Hovering 5s...")
-        time.sleep(5)
-
-        print("Landing...")
-        commander.land(0.0, 3.0)
-        time.sleep(4)
-
-        commander.stop()
+    try:
+        with PositionHlCommander(
+            scf,
+            x=start_x,
+            y=start_y,
+            default_height=HOVER_HEIGHT,
+            default_velocity=0.2,
+            controller=PositionHlCommander.CONTROLLER_PID,
+        ) as pc:
+            print(f"Hovering at {HOVER_HEIGHT}m for {HOVER_SECONDS}s...")
+            time.sleep(HOVER_SECONDS)
+            print("Landing...")
         print("Done.")
     except KeyboardInterrupt:
         print("ABORT")

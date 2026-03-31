@@ -4,10 +4,16 @@ Development environment and flight scripts for Crazyflie 2.1 drones with Loco Po
 
 ## Hardware
 
-- Crazyflie 2.1 drone with Loco Positioning deck
+- Crazyflie 2.1 Brushless drone with Loco Positioning deck
 - Crazyradio 2.0 USB dongle
 - 4-8 Loco Positioning nodes (UWB anchors)
 - Linux laptop (Ubuntu 22.04+)
+
+## Firmware
+
+- **Crazyflie 2.1 Brushless**: `cf21bl-2025.09.bin` ([release notes](https://github.com/bitcraze/crazyflie-firmware/releases/tag/2025.09))
+- Flash via: `uv run python -m cfloader flash firmware/brushless/cf21bl-2025.09.bin stm32-fw -w radio://0/0/2M`
+- Bootloader entry: hold power button ~3s until blue LEDs alternate, then flash on channel 0
 
 ## 1. System Dependencies
 
