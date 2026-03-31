@@ -1,120 +1,361 @@
-"""Camera capture service for drone missions.
+"""Mission-facing camera and streaming service for Crazyflie AI-deck feeds."""
 
-Handles image capture during missions, interfacing with Crazyflie camera
-(or placeholder), saving to filesystem, and returning file paths.
-"""
+from __future__ import annotations
 
 import asyncio
 import logging
-import os
 import uuid
-from datetime import datetime
+from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
+
+import httpx
 
 from src.core.config import Settings, get_settings
 
 logger = logging.getLogger(__name__)
 
 
-class CameraCapture:
-    """
-    Service for capturing images during drone missions.
+@dataclass
+class DroneFeedConfig:
+    """Configuration for one drone's AI-deck camera endpoint."""
 
-    Interfaces with the Crazyflie camera (or placeholder) to capture images,
-    saves them to the configured storage path with mission/timestamp metadata.
+    drone_id: str
+    backend: str
+    wifi_host: Optional[str] = None
+    snapshot_url: Optional[str] = None
+    stream_url: Optional[str] = None
+    enabled: bool = True
+    notes: str = ""
+
+
+@dataclass
+class StreamSession:
+    """Runtime state for an active or fallback camera session."""
+
+    session_id: str
+    mission_id: str
+    drone_id: str
+    backend: str
+    status: str
+    started_at: str
+    fallback_used: bool
+    stream_url: Optional[str] = None
+    notes: str = ""
+
+
+@dataclass
+class CaptureResult:
+    """Result of a single mission capture."""
+
+    image_id: str
+    filepath: str
+    mission_id: str
+    drone_id: Optional[str]
+    backend: str
+    fallback_used: bool
+    session_id: Optional[str]
+    captured_at: str
+
+
+class CameraBackend:
+    """Interface for snapshot and stream-capable camera backends."""
+
+    backend_name = "base"
+
+    async def start_session(self, config: DroneFeedConfig, mission_id: str, settings: Settings) -> StreamSession:
+        raise NotImplementedError
+
+    async def stop_session(self, session: StreamSession) -> None:
+        raise NotImplementedError
+
+    async def capture_frame(self, config: DroneFeedConfig, session: Optional[StreamSession], settings: Settings) -> Optional[bytes]:
+        raise NotImplementedError
+
+
+class PlaceholderBackend(CameraBackend):
+    """Predictable fallback backend used when hardware streaming is unavailable."""
+
+    backend_name = "placeholder"
+
+    async def start_session(self, config: DroneFeedConfig, mission_id: str, settings: Settings) -> StreamSession:
+        session_id = str(uuid.uuid4())
+        return StreamSession(
+            session_id=session_id,
+            mission_id=mission_id,
+            drone_id=config.drone_id,
+            backend=self.backend_name,
+            status="fallback",
+            started_at=_utc_now(),
+            fallback_used=True,
+            stream_url=f"{settings.camera_placeholder_stream_base}/{config.drone_id}/{session_id}",
+            notes="Placeholder stream session; no live AI-deck transport connected.",
+        )
+
+    async def stop_session(self, session: StreamSession) -> None:
+        return None
+
+    async def capture_frame(
+        self, config: DroneFeedConfig, session: Optional[StreamSession], settings: Settings
+    ) -> Optional[bytes]:
+        return None
+
+
+class AIDeckWiFiBackend(CameraBackend):
+    """HTTP-friendly AI-deck WiFi backend.
+
+    This backend is shaped for production but intentionally conservative:
+    - if a snapshot URL is configured, it will fetch a frame over HTTP
+    - if only a stream URL is configured, it exposes session metadata but does not
+      pretend to proxy live video without validated transport handling
     """
+
+    backend_name = "aideck-wifi"
+
+    async def start_session(self, config: DroneFeedConfig, mission_id: str, settings: Settings) -> StreamSession:
+        session_id = str(uuid.uuid4())
+        fallback = not bool(config.stream_url or config.snapshot_url)
+        return StreamSession(
+            session_id=session_id,
+            mission_id=mission_id,
+            drone_id=config.drone_id,
+            backend=self.backend_name,
+            status="active" if not fallback else "fallback",
+            started_at=_utc_now(),
+            fallback_used=fallback,
+            stream_url=config.stream_url,
+            notes=(
+                "AI-deck WiFi session active."
+                if not fallback
+                else "No AI-deck WiFi endpoints configured; using fallback behavior."
+            ),
+        )
+
+    async def stop_session(self, session: StreamSession) -> None:
+        return None
+
+    async def capture_frame(
+        self, config: DroneFeedConfig, session: Optional[StreamSession], settings: Settings
+    ) -> Optional[bytes]:
+        if not config.snapshot_url:
+            return None
+
+        timeout = httpx.Timeout(
+            connect=settings.camera_connect_timeout_seconds,
+            read=settings.camera_read_timeout_seconds,
+            write=settings.camera_read_timeout_seconds,
+            pool=settings.camera_connect_timeout_seconds,
+        )
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.get(config.snapshot_url)
+            response.raise_for_status()
+            return response.content
+
+
+class CameraCapture:
+    """Capture and session manager for up to 3 concurrent drone video feeds."""
 
     def __init__(self, settings: Optional[Settings] = None):
-        """Initialize with settings."""
         self.settings = settings or get_settings()
         self._storage_path = Path(self.settings.image_storage_path)
         self._quality = self.settings.image_quality
+        self._feeds: dict[str, DroneFeedConfig] = {}
+        self._sessions: dict[str, StreamSession] = {}
+        self._lock = asyncio.Lock()
+        self._backends: dict[str, CameraBackend] = {
+            "placeholder": PlaceholderBackend(),
+            "aideck-wifi": AIDeckWiFiBackend(),
+        }
 
     async def _ensure_storage_dir(self) -> None:
-        """Ensure the storage directory exists."""
         self._storage_path.mkdir(parents=True, exist_ok=True)
+
+    def register_drone_feed(
+        self,
+        drone_id: str,
+        backend: Optional[str] = None,
+        wifi_host: Optional[str] = None,
+        snapshot_url: Optional[str] = None,
+        stream_url: Optional[str] = None,
+        enabled: bool = True,
+        notes: str = "",
+    ) -> DroneFeedConfig:
+        """Register or update the camera config for a drone feed."""
+
+        chosen_backend = backend or self.settings.camera_backend
+        config = DroneFeedConfig(
+            drone_id=str(drone_id),
+            backend=chosen_backend,
+            wifi_host=wifi_host,
+            snapshot_url=snapshot_url,
+            stream_url=stream_url,
+            enabled=enabled,
+            notes=notes,
+        )
+        self._feeds[config.drone_id] = config
+        return config
+
+    def get_drone_feed(self, drone_id: str) -> Optional[DroneFeedConfig]:
+        return self._feeds.get(str(drone_id))
+
+    def list_drone_feeds(self) -> list[DroneFeedConfig]:
+        return sorted(self._feeds.values(), key=lambda item: item.drone_id)
+
+    def get_session(self, session_id: str) -> Optional[StreamSession]:
+        return self._sessions.get(session_id)
+
+    def get_drone_session(self, drone_id: str) -> Optional[StreamSession]:
+        for session in self._sessions.values():
+            if session.drone_id == str(drone_id):
+                return session
+        return None
+
+    def list_sessions(self) -> list[StreamSession]:
+        return sorted(self._sessions.values(), key=lambda item: item.started_at)
+
+    async def start_stream_session(self, mission_id: str, drone_id: str) -> StreamSession:
+        """Start or reuse a stream session for a drone."""
+
+        async with self._lock:
+            existing = self.get_drone_session(drone_id)
+            if existing and existing.status in {"active", "fallback"}:
+                return existing
+
+            if len(self._sessions) >= self.settings.camera_max_concurrent_streams:
+                raise RuntimeError(
+                    f"max concurrent camera streams reached ({self.settings.camera_max_concurrent_streams})"
+                )
+
+            config = self._feeds.get(str(drone_id))
+            if config is None:
+                config = self.register_drone_feed(str(drone_id), backend=self.settings.camera_backend)
+            if not config.enabled:
+                raise RuntimeError(f"camera feed disabled for drone {drone_id}")
+
+            backend = self._backends.get(config.backend, self._backends["placeholder"])
+            session = await backend.start_session(config, mission_id, self.settings)
+            self._sessions[session.session_id] = session
+            return session
+
+    async def stop_stream_session(self, session_id: str) -> bool:
+        """Stop and remove a stream session."""
+
+        async with self._lock:
+            session = self._sessions.get(session_id)
+            if session is None:
+                return False
+            backend = self._backends.get(session.backend, self._backends["placeholder"])
+            await backend.stop_session(session)
+            session.status = "stopped"
+            self._sessions.pop(session_id, None)
+            return True
 
     async def capture(
         self,
         mission_id: str,
         drone_id: Optional[str] = None,
         capture_interval: Optional[int] = None,
-    ) -> Optional[str]:
-        """
-        Capture an image during mission execution.
+        session_id: Optional[str] = None,
+        prefer_session: bool = True,
+    ) -> Optional[CaptureResult]:
+        """Capture a mission image from a live or fallback session."""
 
-        Args:
-            mission_id: ID of the mission this capture is for
-            drone_id: ID of the drone (optional, for metadata)
-            capture_interval: Interval index if capturing at intervals
-
-        Returns:
-            Path to the saved image file, or None if capture failed
-        """
         await self._ensure_storage_dir()
 
+        active_session = self._resolve_session(session_id=session_id, drone_id=drone_id)
+        if drone_id and prefer_session and active_session is None:
+            active_session = await self.start_stream_session(mission_id=mission_id, drone_id=str(drone_id))
+
+        async with self._lock:
+            config = self._resolve_feed_config(
+                drone_id=str(drone_id) if drone_id else None,
+                session=active_session,
+            )
+        backend = self._backends.get(
+            config.backend if config else self.settings.camera_backend,
+            self._backends["placeholder"],
+        )
+
+        image_id = str(uuid.uuid4())
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        filepath = self._build_capture_path(
+            mission_id=mission_id,
+            drone_id=drone_id,
+            timestamp=timestamp,
+            image_id=image_id,
+            capture_interval=capture_interval,
+        )
+
         try:
-            # Generate unique image ID and filename
-            image_id = str(uuid.uuid4())
-            timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-
-            # Build filename: mission_drone_timestamp_interval
-            parts = [mission_id]
-            if drone_id:
-                parts.append(drone_id)
-            parts.append(timestamp)
-            if capture_interval is not None:
-                parts.append(f"i{capture_interval}")
-
-            filename = "_".join(parts) + ".jpg"
-            filepath = self._storage_path / filename
-
-            # Capture from camera (placeholder - replace with actual camera integration)
-            image_data = await self._capture_from_camera()
+            image_data = await backend.capture_frame(config, active_session, self.settings) if config else None
+            fallback_used = active_session.fallback_used if active_session else backend.backend_name == "placeholder"
 
             if image_data is None:
-                logger.warning(f"Camera capture returned no data for mission {mission_id}")
-                # Create a placeholder image for testing
+                logger.warning(
+                    "Camera capture returned no data for mission %s drone %s; creating placeholder artifact",
+                    mission_id,
+                    drone_id,
+                )
                 await self._create_placeholder_image(filepath)
+                fallback_used = True
             else:
-                # Save the captured image
-                async with asyncio.Lock():
-                    with open(filepath, "wb") as f:
-                        f.write(image_data)
+                with open(filepath, "wb") as handle:
+                    handle.write(image_data)
 
-            logger.info(f"Captured image {image_id} for mission {mission_id}: {filepath}")
-            return str(filepath)
-
-        except Exception as e:
-            logger.exception(f"Failed to capture image for mission {mission_id}: {e}")
+            return CaptureResult(
+                image_id=image_id,
+                filepath=str(filepath),
+                mission_id=mission_id,
+                drone_id=str(drone_id) if drone_id is not None else None,
+                backend=backend.backend_name,
+                fallback_used=fallback_used,
+                session_id=active_session.session_id if active_session else None,
+                captured_at=_utc_now(),
+            )
+        except Exception as exc:
+            logger.exception("Failed to capture image for mission %s: %s", mission_id, exc)
             return None
 
-    async def _capture_from_camera(self) -> Optional[bytes]:
-        """
-        Capture image from Crazyflie camera.
+    def _resolve_feed_config(
+        self, drone_id: Optional[str], session: Optional[StreamSession]
+    ) -> Optional[DroneFeedConfig]:
+        if session:
+            return self._feeds.get(session.drone_id) or DroneFeedConfig(
+                drone_id=session.drone_id,
+                backend=session.backend,
+            )
+        if drone_id is None:
+            return None
+        return self._feeds.get(drone_id)
 
-        This is a placeholder implementation. Replace with actual
-        Crazyflie camera API integration when hardware is available.
+    def _resolve_session(
+        self, session_id: Optional[str], drone_id: Optional[str]
+    ) -> Optional[StreamSession]:
+        if session_id:
+            return self._sessions.get(session_id)
+        if drone_id is None:
+            return None
+        return self.get_drone_session(str(drone_id))
 
-        Returns:
-            Image data as bytes, or None if capture failed
-        """
-        # Placeholder: In production, this would interface with the
-        # Crazyflie camera API (e.g., via MQTT or direct connection)
-        # For now, return None to trigger placeholder image creation
-        logger.debug("Camera capture placeholder - no actual camera connected")
-        return None
+    def _build_capture_path(
+        self,
+        mission_id: str,
+        drone_id: Optional[str],
+        timestamp: str,
+        image_id: str,
+        capture_interval: Optional[int],
+    ) -> Path:
+        parts = [mission_id]
+        if drone_id:
+            parts.append(str(drone_id))
+        parts.extend([timestamp, image_id])
+        if capture_interval is not None:
+            parts.append(f"i{capture_interval}")
+        return self._storage_path / ("_".join(parts) + ".jpg")
 
     async def _create_placeholder_image(self, filepath: Path) -> None:
-        """
-        Create a placeholder image for testing when camera is unavailable.
-
-        This creates a simple colored square as a placeholder.
-        """
         try:
-            # Simple placeholder: 1x1 pixel JPEG
-            # In production, this would be replaced with actual camera capture
             placeholder_data = (
                 b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00"
                 b"\x01\x00\x00\xff\xdb\x00C\x00\x08\x06\x06\x07\x06\x05\x08"
@@ -135,66 +376,35 @@ class CameraCapture:
                 b"\xf2\xf3\xf4\xf5\xf6\xf7\xf8\xf9\xfa\xff\xda\x00\x08\x01\x01"
                 b"\x00\x00?\x00\xfb\xd5\xff\xd9"
             )
-            with open(filepath, "wb") as f:
-                f.write(placeholder_data)
-        except Exception as e:
-            logger.error(f"Failed to create placeholder image: {e}")
+            with open(filepath, "wb") as handle:
+                handle.write(placeholder_data)
+        except Exception as exc:
+            logger.error("Failed to create placeholder image %s: %s", filepath, exc)
 
     async def get_image(self, image_id: str) -> Optional[bytes]:
-        """
-        Retrieve image data by ID.
-
-        Note: Currently searches by filename pattern. In production,
-        should use a database to map IDs to file paths.
-
-        Args:
-            image_id: The image ID or filename to retrieve
-
-        Returns:
-            Image data as bytes, or None if not found
-        """
-        # Search for image file
         for filepath in self._storage_path.glob(f"*{image_id}*"):
             if filepath.is_file():
                 try:
-                    with open(filepath, "rb") as f:
-                        return f.read()
-                except Exception as e:
-                    logger.error(f"Failed to read image {image_id}: {e}")
+                    with open(filepath, "rb") as handle:
+                        return handle.read()
+                except Exception as exc:
+                    logger.error("Failed to read image %s: %s", image_id, exc)
                     return None
         return None
 
     async def delete_image(self, image_id: str) -> bool:
-        """
-        Delete an image by ID.
-
-        Args:
-            image_id: The image ID or filename to delete
-
-        Returns:
-            True if deleted, False if not found
-        """
         for filepath in self._storage_path.glob(f"*{image_id}*"):
             if filepath.is_file():
                 try:
                     filepath.unlink()
-                    logger.info(f"Deleted image {image_id}")
+                    logger.info("Deleted image %s", image_id)
                     return True
-                except Exception as e:
-                    logger.error(f"Failed to delete image {image_id}: {e}")
+                except Exception as exc:
+                    logger.error("Failed to delete image %s: %s", image_id, exc)
                     return False
         return False
 
     async def list_mission_images(self, mission_id: str) -> list[str]:
-        """
-        List all images associated with a mission.
-
-        Args:
-            mission_id: The mission ID to filter by
-
-        Returns:
-            List of image file paths
-        """
         images = []
         for filepath in self._storage_path.glob(f"{mission_id}_*"):
             if filepath.is_file():
@@ -202,12 +412,14 @@ class CameraCapture:
         return sorted(images)
 
 
-# Global instance
+def _utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
 _camera_capture: Optional[CameraCapture] = None
 
 
 async def get_camera_capture() -> CameraCapture:
-    """Get the global CameraCapture instance."""
     global _camera_capture
     if _camera_capture is None:
         _camera_capture = CameraCapture()

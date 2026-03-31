@@ -32,7 +32,7 @@ The algorithm produces coordinates in a **right-handed Cartesian frame** where:
 - **+Y**: Perpendicular to X, in the plane of the first three nodes
 - **+Z**: Upward (positive = above ground)
 
-This is an **arbitrary reference frame** — whatever you measure defines the orientation. The algorithm doesn't know "north" or "altitude" unless you measure relative to something that defines those.
+This is an **arbitrary reference frame** — whatever you measure defines the orientation. The algorithm does not know "north", "ground", or "altitude" unless you also provide constraints that define those physically.
 
 ---
 
@@ -74,12 +74,26 @@ In the drone-acharya output:
 
 To use drone-acharya coordinates with Crazyflie, you need a transformation.
 
-### Option 1: Physical Measurement Alignment (Recommended)
+### What Distances Cannot Tell You
 
-Measure your anchor positions in the venue with NED in mind:
-- Measure distances while oriented to magnetic north
-- N0→N1 should be roughly North-South
-- Then the acharya output approximates NED directly
+Pure pairwise distances recover the anchor geometry, but not the venue's real-world orientation:
+
+- They do not reveal which axis is gravity/up.
+- They do not reveal which horizontal direction is north.
+- They do not distinguish mirrored layouts unless you add an extra convention.
+
+So if drift matters, the key is not just "measure carefully", but also "define the frame physically".
+
+### Option 1: Survey-Frame Alignment (Recommended for deployment)
+
+Use the graph solver with a `survey_frame` so the solution is tied to real space:
+
+- `x_from` is the survey origin
+- `x_to` defines the +X axis
+- `plane_node` defines the physical ground/reference plane with `x_from` and `x_to`
+- `positive_z_node` selects the physically upward side of that plane
+
+This is the safest way to ensure the solved Z axis corresponds to actual vertical.
 
 ### Option 2: Coordinate Transformation
 
@@ -182,10 +196,10 @@ drone-acharya solve distances.csv --crazyflie --rotate-ned 45 --z-down --offset-
 | Origin | First node (N0) | Configurable |
 | Orientation | From measurement | Geographic (magnetic north) |
 
-**Key insight**: The trilateration produces coordinates in whatever frame your distance measurements define. To use with Crazyflie:
-1. Either measure with NED orientation from the start, OR
-2. Apply a rotation + translation transformation after the fact
+**Key insight**: Distance measurements determine shape, not gravity. To use with Crazyflie:
+1. Prefer a survey-framed solve that explicitly defines the physical plane and upward side.
+2. Then apply any remaining NED rotation/translation with `--rotate-ned`, `--offset-*`, and `--z-down`.
 
-The current `--crazyflie` flag outputs raw coordinates with no transformation — it's your responsibility to ensure measurements align with NED or apply the transform.
+The current `--crazyflie` flag outputs raw coordinates with no transformation — it's your responsibility to ensure the solve is aligned to the venue frame or to apply the transform afterward.
 
-**Recommendation:** When using the output with Crazyflie/LPS, always pass **`--z-down`** (and optionally `--rotate-ned` and offsets) so the coordinates are in NED.
+**Recommendation:** When using the output with Crazyflie/LPS, always pass **`--z-down`** and prefer a solve whose plane/up orientation was explicitly defined rather than inferred from an arbitrary basis choice.

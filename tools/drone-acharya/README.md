@@ -12,6 +12,8 @@ CLI tool that computes 3D coordinates for Loco positioning nodes from pairwise d
 2. **Paste into input** — Save or copy the filled table into a file (e.g. `distances.csv`) and run `drone-acharya solve distances.csv`.
 3. **Note the coordinates** — Output is a table (or `--crazyflie` / `--json`). Use these coordinates to configure your Loco Positioning System anchors.
 
+If the venue's physical "up" matters, treat the CSV flow as the measurement-capture step, not the final truth about world orientation. Pairwise distances alone determine geometry only up to rotation/reflection, so the solver needs an explicit survey frame to align Z with the real vertical axis.
+
 ## Installation
 ```bash
 go install github.com/sysadmin-metrum-ai/resistance-is-futile/tools/drone-acharya@latest
@@ -59,6 +61,27 @@ drone-acharya solve distances.csv --json         # structured output
 ```
 
 For Loco Positioning / Crazyflie, use `--z-down` (and optionally `--rotate-ned`, `--offset-*`); see **COORDINATES.md** for frame details.
+
+### Physical-world Z axis
+
+For stable flight, the most important thing is not just accurate distances but a physically meaningful frame:
+
+- Distances alone do **not** tell the solver which way is gravity/up.
+- The classic CSV solve uses a convenient mathematical frame:
+  - `N0` is the origin
+  - `N1` defines +X
+  - `N0`, `N1`, `N2` define the XY plane
+  - later nodes are placed on the positive-Z side of that plane
+- That frame is fine for quick geometry checks, but it is only correct for the real world if those nodes were intentionally chosen to represent your physical ground plane and upward direction.
+
+For the final anchor coordinates used in Crazyflie/LPS, prefer the graph solver with a `survey_frame`:
+
+- `x_from`: anchor at the survey origin
+- `x_to`: anchor that defines +X
+- `plane_node`: third node known to lie in the physical ground/reference plane
+- `positive_z_node`: a node known to be physically above that plane
+
+That gives you a solved geometry whose Z axis is tied to the real venue instead of an arbitrary basis choice.
 
 ## Flags
 

@@ -1,4 +1,5 @@
 """Two-drone sequential hover test with collision avoidance."""
+import argparse
 import time
 import sys
 import cflib.crtp
@@ -8,14 +9,23 @@ from cflib.crazyflie.log import LogConfig
 
 cflib.crtp.init_drivers()
 
-DRONES = {
-    "drone1": "radio://0/80/2M",
-    "drone2": "radio://0/90/2M",
-}
-
 TDOA3_STDDEV = "0.80"
-HOVER_HEIGHT = 0.4
-MIN_SEPARATION = 0.50
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Two-drone hover smoke test")
+    parser.add_argument("--uri1", default="radio://0/80/2M")
+    parser.add_argument("--uri2", default="radio://0/90/2M")
+    parser.add_argument("--hover-height", type=float, default=0.4)
+    parser.add_argument("--min-separation", type=float, default=0.50)
+    return parser.parse_args()
+
+
+args = parse_args()
+DRONES = {
+    "drone1": args.uri1,
+    "drone2": args.uri2,
+}
 
 
 def reset_and_wait(cf, name):
@@ -104,8 +114,8 @@ try:
     print(f"  drone2 at ({pos2[0]:.3f}, {pos2[1]:.3f}, {pos2[2]:.3f})")
     print(f"  Separation: {sep:.3f}m")
 
-    if sep < MIN_SEPARATION:
-        print(f"  ERROR: Drones too close ({sep:.3f}m < {MIN_SEPARATION}m). Move them apart.")
+    if sep < args.min_separation:
+        print(f"  ERROR: Drones too close ({sep:.3f}m < {args.min_separation}m). Move them apart.")
         sys.exit(1)
 
     cf1.param.set_value("commander.enHighLevel", "1")
@@ -114,11 +124,11 @@ try:
     hlc2 = cf2.high_level_commander
 
     print("\n--- Drone 1: takeoff ---")
-    hlc1.takeoff(HOVER_HEIGHT, 2.0)
+    hlc1.takeoff(args.hover_height, 2.0)
     time.sleep(3)
 
     print("--- Drone 1: hovering | Drone 2: takeoff ---")
-    hlc2.takeoff(HOVER_HEIGHT, 2.0)
+    hlc2.takeoff(args.hover_height, 2.0)
     time.sleep(3)
 
     print("--- Both hovering for 3s ---")

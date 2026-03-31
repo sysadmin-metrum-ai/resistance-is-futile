@@ -48,13 +48,14 @@ class MissionQueue:
             mission: Mission data dict
 
         Returns:
-            Generated mission_id (UUID)
+            Queue identifier used for Redis bookkeeping
         """
         client = await self._get_client()
-        mission_id = str(uuid.uuid4())
-        mission["id"] = mission_id
-        await client.rpush(self.PENDING_MISSIONS_KEY, json.dumps(mission))
-        return mission_id
+        queue_id = mission.get("queue_id") or str(uuid.uuid4())
+        payload = dict(mission)
+        payload.setdefault("queue_id", queue_id)
+        await client.rpush(self.PENDING_MISSIONS_KEY, json.dumps(payload))
+        return queue_id
 
     async def dequeue(self, timeout: int = 0) -> Optional[dict]:
         """

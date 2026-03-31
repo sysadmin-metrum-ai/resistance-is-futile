@@ -1,0 +1,33 @@
+name: python-checks
+
+on:
+  push:
+    branches:
+      - dev
+      - "codex/**"
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync --all-extras --dev
+
+      - name: Compile Python entrypoints
+        run: uv run python -m compileall src scripts tests test-*.py
+
+      - name: Ruff
+        run: uv run ruff check src scripts tests test-*.py
+
+      - name: Targeted unit tests
+        run: uv run pytest tests/test_commissioning_profile.py tests/test_demo_mission.py tests/test_mission_planning.py tests/test_mission_identity.py tests/test_preflight_logic.py

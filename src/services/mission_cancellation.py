@@ -4,12 +4,11 @@ Provides functions to cancel pending or running missions,
 and estimate queue wait times.
 """
 
-import asyncio
 from typing import Optional
 
 from src.core.config import Settings, get_settings
 from src.core.postgrest import PostgRESTClient
-from src.services.flight_controller import FlightController
+from src.services.flight_controller_factory import build_flight_controller
 from src.services.mission_queue import MissionQueue
 
 
@@ -38,11 +37,11 @@ async def cancel_mission(mission_id: str, settings: Optional[Settings] = None) -
     settings = settings or get_settings()
     postgrest = PostgRESTClient(settings)
     mission_queue = MissionQueue(settings)
-    flight_controller = FlightController(settings)
+    flight_controller = build_flight_controller(settings)
 
     try:
         # Get current mission status
-        result = await postgrest.get(f"/missions?id=eq.{mission_id}&select=*")
+        result = await postgrest.get(f"/missions?mission_id=eq.{mission_id}&select=*")
         if not result or len(result) == 0:
             return False
 
@@ -59,7 +58,7 @@ async def cancel_mission(mission_id: str, settings: Optional[Settings] = None) -
 
             # Update status in PostgreSQL
             await postgrest.patch(
-                f"/missions?id=eq.{mission_id}",
+                f"/missions?mission_id=eq.{mission_id}",
                 {"status": STATUS_CANCELLED}
             )
             return True
@@ -82,7 +81,7 @@ async def cancel_mission(mission_id: str, settings: Optional[Settings] = None) -
 
             # Update status in PostgreSQL
             await postgrest.patch(
-                f"/missions?id=eq.{mission_id}",
+                f"/missions?mission_id=eq.{mission_id}",
                 {"status": STATUS_CANCELLED, "result": {"cancelled": True}}
             )
 
@@ -94,7 +93,7 @@ async def cancel_mission(mission_id: str, settings: Optional[Settings] = None) -
         # Any other status - cannot cancel
         return False
 
-    except Exception as e:
+    except Exception:
         # Log error but don't expose internals
         return False
 
@@ -119,7 +118,7 @@ async def _remove_from_queue(mission_id: str, mission_queue: MissionQueue) -> No
 
     for item in items:
         mission = json.loads(item)
-        if mission.get("id") == mission_id:
+        if mission.get("mission_id") == mission_id or mission.get("id") == mission_id:
             # Remove this specific item
             await client.lrem(queue_key, 1, item)
             break
@@ -184,7 +183,7 @@ async def get_mission_status(
     settings = settings or get_settings()
     postgrest = PostgRESTClient(settings)
 
-    result = await postgrest.get(f"/missions?id=eq.{mission_id}&select=*")
+    result = await postgrest.get(f"/missions?mission_id=eq.{mission_id}&select=*")
     if result and len(result) > 0:
         return result[0]
     return None

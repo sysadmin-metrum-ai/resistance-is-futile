@@ -132,7 +132,7 @@ async def get_postgrest() -> PostgRESTClient:
 # API endpoints
 @router.get("", response_model=AnchorListResponse)
 async def list_anchors(
-    status: Optional[str] = None,
+    anchor_status: Optional[str] = None,
     mode: Optional[str] = None,
     enabled_only: bool = True,
     postgrest: PostgRESTClient = Depends(get_postgrest),
@@ -152,8 +152,8 @@ async def list_anchors(
         if enabled_only:
             query_parts.append("enabled=eq.true")
 
-        if status:
-            query_parts.append(f"status=eq.{status}")
+        if anchor_status:
+            query_parts.append(f"status=eq.{anchor_status}")
 
         if mode:
             query_parts.append(f"mode=eq.{mode}")

@@ -15,6 +15,30 @@ Development environment and flight scripts for Crazyflie 2.1 drones with Loco Po
 - Flash via: `uv run python -m cfloader flash firmware/brushless/cf21bl-2025.09.bin stm32-fw -w radio://0/0/2M`
 - Bootloader entry: hold power button ~3s until blue LEDs alternate, then flash on channel 0
 
+## Commissioning A New Drone
+
+Use the explicit commissioning flow before adding a drone to the demo fleet:
+
+```bash
+make commission-drone \
+  URI=radio://0/90/2M \
+  PROFILE=tdoa3 \
+  FIRMWARE=firmware/brushless/cf21bl-2025.09.bin
+```
+
+This wraps the intended bring-up sequence:
+
+1. flash firmware
+2. apply required params and modes
+3. verify hardware health
+4. verify LPS readiness
+5. run the hover litmus test
+
+Reference:
+
+- [Drone commissioning checklist](docs/drone-commissioning.md)
+- [Operator sanity flow](docs/operator-sanity-flow.md)
+
 ## 1. System Dependencies
 
 ```bash

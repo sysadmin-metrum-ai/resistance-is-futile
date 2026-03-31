@@ -6,14 +6,15 @@ pre-flight validation, and mission abort.
 
 from typing import Optional, List
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Depends, Header, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
-from src.core.config import Settings, get_settings
+from src.core.config import get_settings
 from src.core.postgrest import PostgRESTClient
 from src.services.drone_manager import DroneManager
-from src.services.flight_controller import FlightController
+from src.services.flight_controller_factory import get_flight_controller
+from src.services.flight_readiness import DEFAULT_MAX_RADIUS_M, evaluate_drone_readiness
+from src.services.mission_models import Waypoint3D
 from src.services.mission_queue import MissionQueue
-from src.services.mission_cancellation import cancel_mission
 
 
 router = APIRouter()
@@ -59,7 +60,7 @@ class MissionValidationRequest(BaseModel):
     """Request body for mission validation."""
 
     drone_id: int
-    waypoints: list[dict]
+    waypoints: list[Waypoint3D]
     duration_seconds: int
 
 
@@ -75,11 +76,6 @@ class MissionValidationResponse(BaseModel):
 async def get_drone_manager() -> DroneManager:
     """Get drone manager instance."""
     return DroneManager()
-
-
-async def get_flight_controller() -> FlightController:
-    """Get flight controller instance."""
-    return FlightController()
 
 
 async def get_mission_queue() -> MissionQueue:
@@ -107,7 +103,7 @@ def verify_api_key(x_api_key: str = Header(None, alias="X-API-Key")):
 async def trigger_kill_switch(
     background_tasks: BackgroundTasks,
     drone_manager: DroneManager = Depends(get_drone_manager),
-    flight_controller: FlightController = Depends(get_flight_controller),
+    flight_controller=Depends(get_flight_controller),
     mission_queue: MissionQueue = Depends(get_mission_queue),
     x_api_key: str = Header(None, alias="X-API-Key"),
 ):
@@ -147,7 +143,7 @@ async def trigger_kill_switch(
 async def health_check_drone(
     drone_id: int,
     drone_manager: DroneManager = Depends(get_drone_manager),
-    flight_controller: FlightController = Depends(get_flight_controller),
+    flight_controller=Depends(get_flight_controller),
     x_api_key: str = Header(None, alias="X-API-Key"),
 ):
     """
@@ -165,41 +161,26 @@ async def health_check_drone(
             status_code=status.HTTP_404_NOT_FOUND, detail=f"Drone {drone_id} not found"
         )
 
-    # Check if drone is enabled
-    if not drone.get("enabled", True):
-        return HealthCheckResponse(ready=False, reason=f"Drone {drone_id} is disabled")
-
-    # Check if drone is available
-    if drone.get("state") not in ["idle", "offline"]:
-        return HealthCheckResponse(
-            ready=False,
-            reason=f"Drone {drone_id} is not available (state: {drone.get('state')})",
-        )
-
-    # Get drone URI for health check
-    drone_uri = drone.get("uri")
-    if not drone_uri:
-        return HealthCheckResponse(
-            ready=False, reason=f"Drone {drone_id} has no URI configured"
-        )
-
-    # Perform health check via flight controller
+    live_health = None
     try:
-        health = await flight_controller.health_check(drone_uri)
-        return HealthCheckResponse(
-            ready=health.is_healthy,
-            battery=health.battery,
-            connection_quality=health.connection_quality,
-            reason=health.message if not health.is_healthy else None,
-        )
-    except Exception as e:
-        return HealthCheckResponse(ready=False, reason=f"Health check failed: {str(e)}")
+        if drone.get("uri"):
+            live_health = await flight_controller.health_check(drone["uri"])
+    except Exception:
+        live_health = None
+
+    readiness = evaluate_drone_readiness(drone, live_health=live_health)
+    return HealthCheckResponse(
+        ready=readiness.ready,
+        battery=readiness.checks.get("battery"),
+        connection_quality=readiness.checks.get("connection_quality"),
+        reason="; ".join(readiness.warnings) if readiness.warnings else None,
+    )
 
 
 @router.post("/health-check", response_model=BulkHealthCheckResponse)
 async def health_check_all_drones(
     drone_manager: DroneManager = Depends(get_drone_manager),
-    flight_controller: FlightController = Depends(get_flight_controller),
+    flight_controller=Depends(get_flight_controller),
     x_api_key: str = Header(None, alias="X-API-Key"),
 ):
     """
@@ -214,40 +195,22 @@ async def health_check_all_drones(
         results = []
 
         for drone in all_drones:
-            drone_id = drone.get("id")
-            drone_uri = drone.get("uri")
-
-            if not drone_uri:
-                results.append(
-                    HealthCheckResponse(
-                        ready=False, reason=f"Drone {drone_id} has no URI"
-                    )
-                )
-                continue
-
-            # Check if drone is enabled
-            if not drone.get("enabled", True):
-                results.append(
-                    HealthCheckResponse(
-                        ready=False, reason=f"Drone {drone_id} is disabled"
-                    )
-                )
-                continue
-
+            live_health = None
             try:
-                health = await flight_controller.health_check(drone_uri)
-                results.append(
-                    HealthCheckResponse(
-                        ready=health.is_healthy,
-                        battery=health.battery,
-                        connection_quality=health.connection_quality,
-                        reason=health.message if not health.is_healthy else None,
-                    )
+                if drone.get("uri"):
+                    live_health = await flight_controller.health_check(drone["uri"])
+            except Exception:
+                live_health = None
+
+            readiness = evaluate_drone_readiness(drone, live_health=live_health)
+            results.append(
+                HealthCheckResponse(
+                    ready=readiness.ready,
+                    battery=readiness.checks.get("battery"),
+                    connection_quality=readiness.checks.get("connection_quality"),
+                    reason="; ".join(readiness.warnings) if readiness.warnings else None,
                 )
-            except Exception as e:
-                results.append(
-                    HealthCheckResponse(ready=False, reason=f"Error: {str(e)}")
-                )
+            )
 
         return BulkHealthCheckResponse(results=results)
     except Exception as e:
@@ -261,7 +224,7 @@ async def health_check_all_drones(
 async def pre_flight_check(
     drone_id: int,
     drone_manager: DroneManager = Depends(get_drone_manager),
-    flight_controller: FlightController = Depends(get_flight_controller),
+    flight_controller=Depends(get_flight_controller),
     x_api_key: str = Header(None, alias="X-API-Key"),
 ):
     """
@@ -271,8 +234,6 @@ async def pre_flight_check(
     """
     verify_api_key(x_api_key)
 
-    checks = {}
-
     # Get drone details
     try:
         drone = await drone_manager.get_drone(drone_id)
@@ -281,57 +242,22 @@ async def pre_flight_check(
             status_code=status.HTTP_404_NOT_FOUND, detail=f"Drone {drone_id} not found"
         )
 
-    # Check 1: Enabled status
-    checks["enabled"] = drone.get("enabled", True)
-
-    # Check 2: State is idle
-    drone_state = drone.get("state", "offline")
-    checks["state_idle"] = drone_state == "idle"
-    checks["state"] = drone_state
-
-    # Check 3: Battery threshold
-    battery = drone.get("battery", 0)
-    checks["battery_ok"] = battery >= DroneManager.MIN_BATTERY_THRESHOLD
-    checks["battery"] = battery
-
-    # Check 4: Connection quality (if we can connect)
-    drone_uri = drone.get("uri")
-    if drone_uri:
+    live_health = None
+    if drone.get("uri"):
         try:
-            health = await flight_controller.health_check(drone_uri)
-            checks["connection_ok"] = (
-                health.connection_quality >= DroneManager.MIN_CONNECTION_QUALITY
-            )
-            checks["connection_quality"] = health.connection_quality
+            live_health = await flight_controller.health_check(drone["uri"])
         except Exception:
-            checks["connection_ok"] = False
-            checks["connection_quality"] = 0
-    else:
-        checks["connection_ok"] = False
-        checks["connection_quality"] = 0
+            live_health = None
 
-    # Determine overall readiness
-    ready = all(
-        [
-            checks["enabled"],
-            checks["state_idle"],
-            checks["battery_ok"],
-            checks["connection_ok"],
-        ]
-    )
-
-    return PreFlightCheckResponse(ready=ready, checks=checks)
-
-
-# Default max operational radius for demo (in meters)
-DEFAULT_MAX_RADIUS = 5.0
+    readiness = evaluate_drone_readiness(drone, live_health=live_health)
+    return PreFlightCheckResponse(ready=readiness.ready, checks=readiness.checks)
 
 
 @router.post("/validate-mission", response_model=MissionValidationResponse)
 async def validate_mission(
     request: MissionValidationRequest,
     drone_manager: DroneManager = Depends(get_drone_manager),
-    flight_controller: FlightController = Depends(get_flight_controller),
+    flight_controller=Depends(get_flight_controller),
     x_api_key: str = Header(None, alias="X-API-Key"),
 ):
     """
@@ -344,9 +270,6 @@ async def validate_mission(
     """
     verify_api_key(x_api_key)
 
-    checks = {}
-    warnings = []
-
     # Get drone details
     try:
         drone = await drone_manager.get_drone(request.drone_id)
@@ -356,59 +279,34 @@ async def validate_mission(
             detail=f"Drone {request.drone_id} not found",
         )
 
-    # Check 1: Drone ready
-    drone_enabled = drone.get("enabled", True)
-    drone_state = drone.get("state", "offline")
-    drone_ready = drone_enabled and drone_state == "idle"
-    checks["drone_ready"] = drone_ready
-    checks["drone_state"] = drone_state
-    if not drone_ready:
-        if not drone_enabled:
-            warnings.append(f"Drone {request.drone_id} is disabled")
-        if drone_state != "idle":
-            warnings.append(
-                f"Drone {request.drone_id} is not idle (state: {drone_state})"
-            )
+    live_health = None
+    if drone.get("uri"):
+        try:
+            live_health = await flight_controller.health_check(drone["uri"])
+        except Exception:
+            live_health = None
 
-    # Check 2: Battery sufficient
-    battery = drone.get("battery", 0)
-    min_battery = int(
-        (request.duration_seconds / 30) + 20
-    )  # Conservative: 1% per 30s + 20% buffer
-    battery_sufficient = battery >= min_battery
-    checks["battery_sufficient"] = battery_sufficient
-    checks["battery"] = battery
-    checks["battery_required"] = min_battery
-    if not battery_sufficient:
-        warnings.append(
-            f"Battery {battery}% is below required {min_battery}% for {request.duration_seconds}s mission"
-        )
-
-    # Check 3: Waypoints in range
-    waypoints_in_range = True
-    for i, wp in enumerate(request.waypoints):
-        x = wp.get("x", 0)
-        y = wp.get("y", 0)
-        # Calculate distance from origin (0, 0)
-        distance = (x**2 + y**2) ** 0.5
-        if distance > DEFAULT_MAX_RADIUS:
-            waypoints_in_range = False
-            warnings.append(
-                f"Waypoint {i} at ({x}, {y}) is {distance:.1f}m from origin (max: {DEFAULT_MAX_RADIUS}m)"
-            )
-    checks["waypoints_in_range"] = waypoints_in_range
-
-    # Determine overall validity
-    valid = drone_ready and battery_sufficient and waypoints_in_range
-
-    return MissionValidationResponse(valid=valid, checks=checks, warnings=warnings)
+    readiness = evaluate_drone_readiness(
+        drone,
+        duration_seconds=request.duration_seconds,
+        waypoints=request.waypoints,
+        live_health=live_health,
+        max_radius_m=DEFAULT_MAX_RADIUS_M,
+    )
+    checks = dict(readiness.checks)
+    checks["drone_ready"] = readiness.ready
+    return MissionValidationResponse(
+        valid=readiness.ready,
+        checks=checks,
+        warnings=list(readiness.warnings),
+    )
 
 
 @router.post("/missions/{mission_id}/abort", response_model=MissionAbortResponse)
 async def abort_mission(
     mission_id: str,
     drone_manager: DroneManager = Depends(get_drone_manager),
-    flight_controller: FlightController = Depends(get_flight_controller),
+    flight_controller=Depends(get_flight_controller),
     mission_queue: MissionQueue = Depends(get_mission_queue),
     postgrest: PostgRESTClient = Depends(get_postgrest),
     x_api_key: str = Header(None, alias="X-API-Key"),

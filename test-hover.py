@@ -1,4 +1,5 @@
 """Minimal LPS hover using cflib's PositionHlCommander."""
+import argparse
 import time
 import sys
 import cflib.crtp
@@ -6,19 +7,18 @@ from cflib.crazyflie import Crazyflie
 from cflib.crazyflie.syncCrazyflie import SyncCrazyflie
 from cflib.crazyflie.log import LogConfig
 from cflib.positioning.position_hl_commander import PositionHlCommander
-from cflib.utils import uri_helper
+
+from src.services.preflight_logic import (
+    PositionSample,
+    PositionStabilityThresholds,
+    evaluate_position_stability,
+    format_position_metrics,
+)
 
 cflib.crtp.init_drivers()
 
-URI = "radio://0/80/2M"
-HOVER_HEIGHT = 0.25
-HOVER_SECONDS = 5
 TDOA3_STDDEV = "0.15"
 ROBUST_TDOA = "1"
-PREFLIGHT_SECONDS = 3.0
-PREFLIGHT_XY_SPREAD_MAX_M = 0.20
-PREFLIGHT_Z_SPREAD_MAX_M = 0.30
-PREFLIGHT_Z_DRIFT_MAX_M = 0.30
 
 
 def reset_estimator(cf):
@@ -69,35 +69,23 @@ def wait_for_estimator(cf):
     print("Estimator converged.")
 
 
-def ensure_position_stability(flight_data):
-    if len(flight_data) < 8:
-        print("ERROR: Not enough preflight samples; aborting takeoff.")
-        sys.exit(2)
+def parse_args():
+    parser = argparse.ArgumentParser(description="Single-drone LPS hover litmus test")
+    parser.add_argument("--uri", default="radio://0/80/2M")
+    parser.add_argument("--hover-height", type=float, default=0.25)
+    parser.add_argument("--hover-seconds", type=float, default=5.0)
+    parser.add_argument("--preflight-seconds", type=float, default=3.0)
+    parser.add_argument("--xy-spread-max", type=float, default=0.20)
+    parser.add_argument("--z-spread-max", type=float, default=0.30)
+    parser.add_argument("--z-drift-max", type=float, default=0.30)
+    parser.add_argument("--ground-z-max", type=float, default=0.20)
+    return parser.parse_args()
 
-    xs = [x for _, x, _, _ in flight_data]
-    ys = [y for _, _, y, _ in flight_data]
-    zs = [z for _, _, _, z in flight_data]
-    x_spread = max(xs) - min(xs)
-    y_spread = max(ys) - min(ys)
-    z_spread = max(zs) - min(zs)
-    z_drift = abs(zs[-1] - zs[0])
 
-    print(
-        f"Preflight spread: x={x_spread:.3f}m y={y_spread:.3f}m "
-        f"z={z_spread:.3f}m z_drift={z_drift:.3f}m"
-    )
-
-    if (
-        max(x_spread, y_spread) > PREFLIGHT_XY_SPREAD_MAX_M
-        or z_spread > PREFLIGHT_Z_SPREAD_MAX_M
-        or z_drift > PREFLIGHT_Z_DRIFT_MAX_M
-    ):
-        print("ERROR: Localization unstable; refusing takeoff.")
-        sys.exit(2)
-
+args = parse_args()
 
 print("Connecting...")
-with SyncCrazyflie(URI, cf=Crazyflie(rw_cache="./cache")) as scf:
+with SyncCrazyflie(args.uri, cf=Crazyflie(rw_cache="./cache")) as scf:
     cf = scf.cf
 
     cf.param.set_value("loco.mode", "3")
@@ -111,7 +99,7 @@ with SyncCrazyflie(URI, cf=Crazyflie(rw_cache="./cache")) as scf:
     log_flight.add_variable("kalman.stateX", "float")
     log_flight.add_variable("kalman.stateY", "float")
     log_flight.add_variable("kalman.stateZ", "float")
-    flight_data = []
+    flight_data: list[tuple[float, float, float, float]] = []
 
     def flight_cb(timestamp, data, logconf):
         x = data["kalman.stateX"]
@@ -123,13 +111,27 @@ with SyncCrazyflie(URI, cf=Crazyflie(rw_cache="./cache")) as scf:
     log_flight.data_received_cb.add_callback(flight_cb)
     log_flight.start()
 
-    print(f"Running preflight stability check ({PREFLIGHT_SECONDS:.0f}s)...")
-    time.sleep(PREFLIGHT_SECONDS)
-    ensure_position_stability(flight_data)
+    print(f"Running preflight stability check ({args.preflight_seconds:.0f}s)...")
+    time.sleep(args.preflight_seconds)
+    stability = evaluate_position_stability(
+        [PositionSample(x=x, y=y, z=z) for _, x, y, z in flight_data],
+        PositionStabilityThresholds(
+            required_samples=8,
+            xy_spread_max_m=args.xy_spread_max,
+            z_spread_max_m=args.z_spread_max,
+            z_drift_max_m=args.z_drift_max,
+            ground_z_abs_max_m=args.ground_z_max,
+        ),
+    )
+    print(format_position_metrics(stability.metrics))
+    if not stability.ok:
+        for reason in stability.reasons:
+            print(f"ERROR: {reason}")
+        sys.exit(2)
 
     _, start_x, start_y, start_z = flight_data[-1]
     print(f"Starting position: ({start_x:.3f}, {start_y:.3f}, {start_z:.3f})")
-    if abs(start_z) > 0.20:
+    if abs(start_z) > args.ground_z_max:
         print(f"ERROR: Bad ground pose estimate (z={start_z:.3f}). Aborting.")
         sys.exit(2)
 
@@ -144,12 +146,12 @@ with SyncCrazyflie(URI, cf=Crazyflie(rw_cache="./cache")) as scf:
             scf,
             x=start_x,
             y=start_y,
-            default_height=HOVER_HEIGHT,
+            default_height=args.hover_height,
             default_velocity=0.2,
             controller=PositionHlCommander.CONTROLLER_PID,
         ) as pc:
-            print(f"Hovering at {HOVER_HEIGHT}m for {HOVER_SECONDS}s...")
-            time.sleep(HOVER_SECONDS)
+            print(f"Hovering at {args.hover_height}m for {args.hover_seconds:.0f}s...")
+            time.sleep(args.hover_seconds)
             print("Landing...")
         print("Done.")
     except KeyboardInterrupt:

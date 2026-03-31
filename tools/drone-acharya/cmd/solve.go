@@ -3,9 +3,12 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/sysadmin-metrum-ai/resistance-is-futile/tools/drone-acharya/graph"
 	ioformat "github.com/sysadmin-metrum-ai/resistance-is-futile/tools/drone-acharya/io"
+	"github.com/sysadmin-metrum-ai/resistance-is-futile/tools/drone-acharya/legacy"
 	"github.com/spf13/cobra"
 )
 
@@ -47,9 +50,11 @@ func init() {
 
 var solveCmd = &cobra.Command{
 	Use:   "solve [input file]",
-	Short: "Compute coordinates from graph (JSONL)",
-	Long:  "Reads JSONL node/edge records and outputs node coordinates (table, --json, or --crazyflie). Use --validate to show residuals.",
-	Example: `  drone-acharya solve graph.jsonl
+	Short: "Compute coordinates from CSV/TSV distances or JSONL graph",
+	Long:  "Reads a classic CSV/TSV distance matrix or JSONL node/edge graph and outputs node coordinates (table, --json, or --crazyflie). Use --validate to show residuals.",
+	Example: `  drone-acharya solve distances.csv --validate
+  drone-acharya solve distances.csv --crazyflie --z-down
+  drone-acharya solve graph.jsonl
   drone-acharya solve graph.jsonl -o coords.csv --crazyflie
   drone-acharya solve graph.jsonl --json --validate`,
 	Args: cobra.ExactArgs(1),
@@ -59,7 +64,16 @@ var solveCmd = &cobra.Command{
 func SolveCmd() *cobra.Command { return solveCmd }
 
 func runSolve(cmd *cobra.Command, args []string) error {
-	f, err := os.Open(args[0])
+	ext := strings.ToLower(filepath.Ext(args[0]))
+	if ext == ".csv" || ext == ".tsv" {
+		return runSolveClassic(args[0], ext)
+	}
+
+	return runSolveGraph(args[0])
+}
+
+func runSolveGraph(path string) error {
+	f, err := os.Open(path)
 	if err != nil {
 		return err
 	}
@@ -161,6 +175,96 @@ func runSolve(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+func runSolveClassic(path string, ext string) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	format := ioformat.FormatCSV
+	if ext == ".tsv" {
+		format = ioformat.FormatTSV
+	}
+
+	n, dist, err := ioformat.ReadDistances(f, format)
+	if err != nil {
+		return err
+	}
+
+	if surveyXFrom != "" || surveyXTo != "" || surveyPlaneNode != "" || surveyPosZNode != "" {
+		return fmt.Errorf("survey frame flags are only supported for JSONL graph inputs")
+	}
+
+	result, err := legacy.Solve(n, dist)
+	if err != nil {
+		return err
+	}
+
+	var validation []legacy.ValidationRow
+	warnings := append([]string(nil), result.Warnings...)
+	if solveValidate {
+		validation, warnings = legacy.Validate(result.Coords, dist, warnings)
+		printLegacyValidationTable(validation)
+		for _, w := range warnings {
+			fmt.Fprintln(os.Stderr, "Warn:", w)
+		}
+	}
+
+	ioCoords := make([]ioformat.Coord, len(result.Coords))
+	for i, c := range result.Coords {
+		ioCoords[i] = ioformat.Coord{c.X, c.Y, c.Z}
+	}
+	ioCoords = ioformat.Transform(ioCoords, solveRotateNed, solveOffsetX, solveOffsetY, solveOffsetZ, solveZDown)
+
+	out := os.Stdout
+	if solveOut != "" {
+		of, err := os.Create(solveOut)
+		if err != nil {
+			return err
+		}
+		defer of.Close()
+		out = of
+	}
+
+	provider := classicNodeProvider{n: n}
+
+	if solveJSON {
+		ioResiduals := make([]ioformat.ValidationRow, len(validation))
+		for i, r := range validation {
+			ioResiduals[i] = ioformat.ValidationRow{
+				Pair:     r.Pair,
+				Measured: r.Measured,
+				Computed: roundTo(r.Computed, solvePrecision),
+				ErrorM:   roundTo(r.ErrorM, solvePrecision),
+				ErrorPct: roundTo(r.ErrorPct, 1),
+			}
+		}
+		return ioformat.WriteJSONNodes(out, provider, ioCoords, ioResiduals, warnings, solvePrecision)
+	}
+
+	if solveCrazyflie {
+		if !solveZDown {
+			fmt.Fprintln(os.Stderr, "Note: for Crazyflie/LPS NED, use --z-down (see COORDINATES.md)")
+		}
+		ioformat.WriteCrazyflieAnchors(out, provider, ioCoords, solvePrecision)
+		return nil
+	}
+
+	ioformat.WriteTableGraph(out, provider, ioCoords, solvePrecision)
+	return nil
+}
+
+type classicNodeProvider struct {
+	n int
+}
+
+func (p classicNodeProvider) NodeCount() int { return p.n }
+
+func (p classicNodeProvider) NodeAt(i int) (name, kind string, anchorID int) {
+	return fmt.Sprintf("N%d", i), "anchor", i
+}
+
 func printResidualTable(residuals []graph.EdgeResidual, rms float64) {
 	fmt.Fprintf(os.Stderr, "Pair\tMeasured\tComputed\tError(m)\tResidual\n")
 	for _, r := range residuals {
@@ -168,6 +272,14 @@ func printResidualTable(residuals []graph.EdgeResidual, rms float64) {
 			r.A, r.B, r.Measured, r.Computed, r.ErrorM, r.Residual)
 	}
 	fmt.Fprintf(os.Stderr, "RMS (sigma-normalized): %f\n", rms)
+}
+
+func printLegacyValidationTable(rows []legacy.ValidationRow) {
+	fmt.Fprintf(os.Stderr, "Pair\tMeasured\tComputed\tError(m)\tError(%%)\n")
+	for _, r := range rows {
+		fmt.Fprintf(os.Stderr, "%s\t%.3f\t%.3f\t%.3f\t%.1f\n",
+			r.Pair, r.Measured, r.Computed, r.ErrorM, r.ErrorPct)
+	}
 }
 
 func roundTo(v float64, precision int) float64 {

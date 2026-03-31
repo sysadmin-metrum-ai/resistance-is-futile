@@ -6,18 +6,24 @@ and handles the complete mission lifecycle.
 
 import asyncio
 import logging
-from typing import Optional
+from typing import Any, Optional
 
 from src.core.config import Settings, get_settings
 from src.core.postgrest import PostgRESTClient
 from src.services.camera_capture import CameraCapture, get_camera_capture
 from src.services.drone_manager import DroneManager, DroneState
 from src.services.event_broadcaster import get_broadcaster
-from src.services.flight_controller import FlightController
+from src.services.flight_controller_factory import build_flight_controller
 from src.services.mission_queue import MissionQueue
 
 
 logger = logging.getLogger(__name__)
+
+
+def _mission_patch_path(mission_id: str) -> str:
+    """Build the PostgREST filter for our external mission identifier."""
+
+    return f"/missions?mission_id=eq.{mission_id}"
 
 
 class MissionWorker:
@@ -37,14 +43,14 @@ class MissionWorker:
         self,
         settings: Optional[Settings] = None,
         drone_manager: Optional[DroneManager] = None,
-        flight_controller: Optional[FlightController] = None,
+        flight_controller: Optional[Any] = None,
         mission_queue: Optional[MissionQueue] = None,
         camera_capture: Optional[CameraCapture] = None,
     ):
         """Initialize with optional dependencies for testing."""
         self.settings = settings or get_settings()
         self.drone_manager = drone_manager or DroneManager(self.settings)
-        self.flight_controller = flight_controller or FlightController(self.settings)
+        self.flight_controller = flight_controller or build_flight_controller(self.settings)
         self.mission_queue = mission_queue or MissionQueue(self.settings)
         self.camera_capture = camera_capture
         self._running = False
@@ -72,16 +78,39 @@ class MissionWorker:
         if not mission:
             return False
 
-        mission_id = mission.get("id")
+        mission_id = mission.get("mission_id") or mission.get("id") or mission.get("queue_id")
         logger.info(f"Processing mission {mission_id}")
 
-        # Step 2: Get available drone and acquire it
-        drone = await self.drone_manager.get_available_drone()
-        if not drone:
-            # No drone available - re-queue and return
-            await self.mission_queue.enqueue(mission)
-            logger.warning(f"No available drone for mission {mission_id}")
-            return False
+        requested_drone_id = mission.get("drone_id")
+        if requested_drone_id is not None:
+            try:
+                drone = await self.drone_manager.get_drone(int(requested_drone_id))
+            except ValueError:
+                logger.warning(f"Requested drone {requested_drone_id} not found for mission {mission_id}")
+                await self._update_mission_status(
+                    mission_id,
+                    self.STATUS_FAILED,
+                    error=f"Requested drone {requested_drone_id} not found",
+                )
+                return True
+            if drone.get("state") != DroneState.IDLE or not drone.get("enabled", True):
+                logger.warning(
+                    "Requested drone %s unavailable for mission %s (state=%s enabled=%s)",
+                    requested_drone_id,
+                    mission_id,
+                    drone.get("state"),
+                    drone.get("enabled", True),
+                )
+                await self.mission_queue.enqueue(mission)
+                return False
+        else:
+            # Step 2: Get available drone and acquire it
+            drone = await self.drone_manager.get_available_drone()
+            if not drone:
+                # No drone available - re-queue and return
+                await self.mission_queue.enqueue(mission)
+                logger.warning(f"No available drone for mission {mission_id}")
+                return False
 
         drone_id = str(drone["id"])
 
@@ -185,7 +214,7 @@ class MissionWorker:
             update_data["result"] = {"error": error}
 
         try:
-            await postgrest.patch(f"/missions?id=eq.{mission_id}", update_data)
+            await postgrest.patch(_mission_patch_path(mission_id), update_data)
 
             # Emit mission update event
             await self._emit_mission_event(mission_id, status, error)

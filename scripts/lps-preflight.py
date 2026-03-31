@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 import argparse
+import json
 import sys
 import time
 from pathlib import Path
-from statistics import pstdev
 from threading import Event
 
 import cflib.crtp
@@ -11,6 +11,13 @@ from cflib import crazyflie
 from cflib.crazyflie.log import LogConfig
 from cflib.crazyflie.mem import MemoryElement
 from cflib.crazyflie.syncCrazyflie import SyncCrazyflie
+
+from src.services.preflight_logic import (
+    PositionSample,
+    PositionStabilityThresholds,
+    evaluate_position_stability,
+    format_position_metrics,
+)
 
 
 def load_anchor_ids(path: Path) -> set[int]:
@@ -67,11 +74,12 @@ def main() -> int:
     p.add_argument("--xy-spread-max", type=float, default=0.20)
     p.add_argument("--z-drift-max", type=float, default=0.20)
     p.add_argument("--force-tdoa3", action="store_true", default=True)
+    p.add_argument("--json", action="store_true", help="Emit JSON summary")
     args = p.parse_args()
 
     expected_ids = load_anchor_ids(Path(args.anchors))
     cflib.crtp.init_drivers()
-    xs, ys, zs = [], [], []
+    samples: list[PositionSample] = []
     reasons = []
 
     print(f"Connecting: {args.uri}")
@@ -103,9 +111,13 @@ def main() -> int:
         lg.add_variable("kalman.stateZ", "float")
 
         def cb(_ts, data, _lg):
-            xs.append(data["kalman.stateX"])
-            ys.append(data["kalman.stateY"])
-            zs.append(data["kalman.stateZ"])
+            samples.append(
+                PositionSample(
+                    x=data["kalman.stateX"],
+                    y=data["kalman.stateY"],
+                    z=data["kalman.stateZ"],
+                )
+            )
 
         cf.log.add_config(lg)
         lg.data_received_cb.add_callback(cb)
@@ -113,23 +125,17 @@ def main() -> int:
         time.sleep(args.duration)
         lg.stop()
 
-    if len(zs) < 10:
-        reasons.append(f"too few samples: {len(zs)}")
-    else:
-        x_spread = max(xs) - min(xs)
-        y_spread = max(ys) - min(ys)
-        z_spread = max(zs) - min(zs)
-        z_drift = abs(zs[-1] - zs[0])
-        print(
-            f"samples={len(zs)} x_spread={x_spread:.3f} y_spread={y_spread:.3f} "
-            f"z_spread={z_spread:.3f} z_drift={z_drift:.3f} z_stdev={pstdev(zs):.3f}"
-        )
-        if max(x_spread, y_spread) > args.xy_spread_max:
-            reasons.append("xy spread too high")
-        if z_spread > args.z_spread_max:
-            reasons.append("z spread too high")
-        if z_drift > args.z_drift_max:
-            reasons.append("z drift too high")
+    stability = evaluate_position_stability(
+        samples,
+        PositionStabilityThresholds(
+            required_samples=10,
+            xy_spread_max_m=args.xy_spread_max,
+            z_spread_max_m=args.z_spread_max,
+            z_drift_max_m=args.z_drift_max,
+        ),
+    )
+    print(format_position_metrics(stability.metrics))
+    reasons.extend(stability.reasons)
 
     if mode != 3:
         reasons.append(f"loco.mode is {mode}, expected 3")
@@ -138,7 +144,30 @@ def main() -> int:
     if deck_loco != 1 or deck_uwb != 1:
         reasons.append("loco/uwb deck not detected")
 
-    if reasons:
+    ok = not reasons
+    if args.json:
+        print(
+            json.dumps(
+                {
+                    "ok": ok,
+                    "uri": args.uri,
+                    "mode": mode,
+                    "estimator": est,
+                    "deck_loco": deck_loco,
+                    "deck_uwb": deck_uwb,
+                    "anchor_validity": {
+                        "expected": sorted(expected_ids),
+                        "present": sorted(present),
+                        "missing": missing,
+                        "invalid": invalid,
+                    },
+                    "stability": stability.to_dict(),
+                    "reasons": reasons,
+                },
+                indent=2,
+            )
+        )
+    if not ok:
         print("NO-GO")
         for r in reasons:
             print(f"- {r}")

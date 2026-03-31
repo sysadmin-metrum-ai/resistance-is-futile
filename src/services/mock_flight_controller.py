@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from src.core.config import Settings, get_settings
+from src.services.mission_models import Waypoint3D
 
 
 @dataclass
@@ -29,6 +30,16 @@ class MockMissionResult:
     message: str
     waypoints_completed: int
     duration_seconds: int
+
+
+def _coerce_waypoint(waypoint) -> Waypoint3D:
+    if isinstance(waypoint, Waypoint3D):
+        return waypoint
+    if isinstance(waypoint, dict):
+        return Waypoint3D(**waypoint)
+    if isinstance(waypoint, (tuple, list)) and len(waypoint) >= 3:
+        return Waypoint3D(x=waypoint[0], y=waypoint[1], z=waypoint[2])
+    raise TypeError(f"unsupported waypoint type: {type(waypoint)!r}")
 
 
 @dataclass
@@ -137,10 +148,10 @@ class MockFlightController:
         # Simulate executing waypoints
         waypoints_completed = 0
         for waypoint in waypoints:
-            x, y, z = waypoint
-            drone.position = {"x": x, "y": y, "z": z}
+            wp = _coerce_waypoint(waypoint)
+            drone.position = {"x": wp.x, "y": wp.y, "z": wp.z}
             drone.state = "flying"
-            await asyncio.sleep(0.05)  # Simulate flight time
+            await asyncio.sleep(0.05 + wp.hold_seconds)  # Simulate flight time
             waypoints_completed += 1
 
         # Return to idle
@@ -217,7 +228,7 @@ class MockFlightController:
         }
 
 
-async def get_flight_controller() -> "FlightController":
+async def get_flight_controller():
     """Get flight controller - real or mock based on settings."""
     settings = get_settings()
 
@@ -227,9 +238,3 @@ async def get_flight_controller() -> "FlightController":
         from src.services.flight_controller import FlightController
 
         return FlightController(settings)
-
-        return FlightController(settings)
-
-
-# Re-export for compatibility
-from src.services.flight_controller import FlightController

@@ -25,6 +25,11 @@ class Settings(BaseSettings):
     # Camera configuration
     image_storage_path: str = "./captures"
     image_quality: int = 85
+    camera_backend: str = "placeholder"
+    camera_max_concurrent_streams: int = 3
+    camera_connect_timeout_seconds: float = 3.0
+    camera_read_timeout_seconds: float = 10.0
+    camera_placeholder_stream_base: str = "placeholder://stream"
 
     # Mock/Simulation mode (default: true for demo safety - no actual drone commands)
     mock_mode: bool = True

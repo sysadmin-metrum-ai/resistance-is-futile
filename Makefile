@@ -1,7 +1,9 @@
 # Drone Swarm Agent - Makefile
 # Self-contained test infrastructure
 
-.PHONY: help install services-up services-down run test test-integration clean
+.PHONY: help install services-up services-down run test test-integration check-python commission-drone clean
+
+ROOT_DIR := $(CURDIR)
 
 # Default target
 help:
@@ -12,6 +14,8 @@ help:
 	@echo "  make run              - Start API server on port 8000"
 	@echo "  make test             - Run pytest unit tests"
 	@echo "  make test-integration - Run integration tests against running API"
+	@echo "  make check-python     - Compile, lint, and run targeted pure-Python tests"
+	@echo "  make commission-drone URI=... [PROFILE=tdoa3] [FIRMWARE=...] - Checklist-driven new-drone bring-up"
 	@echo "  make clean            - Cleanup temporary files and containers"
 
 # Install dependencies using uv
@@ -63,12 +67,27 @@ services-down:
 # Run API server
 run:
 	@echo "Starting API server on port 8000..."
-	@cd /home/cgadgil/src/resistance-is-futile && uv run uvicorn src.main:app --host 0.0.0.0 --port 8000
+	@cd $(ROOT_DIR) && uv run uvicorn src.main:app --host 0.0.0.0 --port 8000
 
 # Run unit tests
 test:
 	@echo "Running unit tests..."
-	cd /home/cgadgil/src/resistance-is-futile && uv run pytest tests/ -v
+	cd $(ROOT_DIR) && uv run pytest tests/ -v
+
+check-python:
+	@echo "Running Python compile/lint/test hooks..."
+	cd $(ROOT_DIR) && scripts/run-python-checks.sh
+
+commission-drone:
+	@if [ -z "$(URI)" ]; then \
+		echo "Usage: make commission-drone URI=radio://0/90/2M [PROFILE=tdoa3] [FIRMWARE=firmware/brushless/cf21bl-2025.09.bin]"; \
+		exit 2; \
+	fi
+	@cd $(ROOT_DIR) && \
+		scripts/commission-drone.sh \
+			--uri "$(URI)" \
+			--profile "$(or $(PROFILE),tdoa3)" \
+			$(if $(FIRMWARE),--firmware "$(FIRMWARE)",)
 
 # Run integration tests
 test-integration: services-up
@@ -79,7 +98,7 @@ test-integration: services-up
 	@echo "Waiting for services to be ready..."
 	@sleep 3
 	@echo "Starting API server in background..."
-	@cd /home/cgadgil/src/resistance-is-futile && \
+	@cd $(ROOT_DIR) && \
 		POSTGREST_URL=http://localhost:3000 \
 		POSTGREST_API_KEY=test-key \
 		REDIS_URL=redis://localhost:6379 \
@@ -100,7 +119,7 @@ test-integration: services-up
 		fi; \
 	done
 	@echo "Running integration tests..."
-	@cd /home/cgadgil/src/resistance-is-futile && uv run pytest tests/test_integration.py -v; \
+	@cd $(ROOT_DIR) && uv run pytest tests/test_integration.py -v; \
 		TEST_RESULT=$$?; \
 		echo "Stopping API server..."; \
 		if [ -f /tmp/api-server.pid ]; then \
