@@ -59,14 +59,15 @@ def read_anchor_validity(cf, timeout_s: float) -> dict[int, bool]:
 
 def main() -> int:
     p = argparse.ArgumentParser(description="LPS go/no-go preflight check")
-    p.add_argument("--uri", default="radio://0/90/2M")
+    p.add_argument("--uri", default=None, help="Drone URI (auto-scan if omitted)")
     p.add_argument("--anchors", default="scripts/anchors.py")
     p.add_argument("--duration", type=float, default=10.0)
     p.add_argument("--period-ms", type=int, default=200)
     p.add_argument("--z-spread-max", type=float, default=0.25)
     p.add_argument("--xy-spread-max", type=float, default=0.20)
     p.add_argument("--z-drift-max", type=float, default=0.20)
-    p.add_argument("--force-tdoa3", action="store_true", default=True)
+    p.add_argument("--no-force-tdoa3", action="store_true", default=False,
+                   help="Skip forcing TDoA3 mode (default: force TDoA3)")
     args = p.parse_args()
 
     expected_ids = load_anchor_ids(Path(args.anchors))
@@ -74,10 +75,18 @@ def main() -> int:
     xs, ys, zs = [], [], []
     reasons = []
 
-    print(f"Connecting: {args.uri}")
-    with SyncCrazyflie(args.uri, cf=crazyflie.Crazyflie(rw_cache="./cache")) as scf:
+    uri = args.uri
+    if uri is None:
+        available = cflib.crtp.scan_interfaces()
+        if not available:
+            print("No Crazyflie found.")
+            return 1
+        uri = available[0][0]
+
+    print(f"Connecting: {uri}")
+    with SyncCrazyflie(uri, cf=crazyflie.Crazyflie(rw_cache="./cache")) as scf:
         cf = scf.cf
-        if args.force_tdoa3:
+        if not args.no_force_tdoa3:
             cf.param.set_value("loco.mode", "3")
             time.sleep(0.3)
 

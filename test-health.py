@@ -27,7 +27,6 @@ from cflib.crazyflie.log import LogConfig
 
 DB_PATH = Path(__file__).resolve().parent / "drones.db"
 DATA_RATE = "2M"
-DATA_RATE = "2M"
 MOTOR_TEST_PWM = 12000
 MOTOR_SPIN_SEC = 0.8
 MIN_BATTERY_V = 3.3

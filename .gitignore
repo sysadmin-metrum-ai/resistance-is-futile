@@ -37,6 +37,10 @@ cache/
 *.jsonl
 *.csv
 drone-acharya_linux_*
+console_boot_log.txt
+
+# Firmware binaries are tracked in firmware/ -- don't ignore them
+!firmware/**
 
 # drone-acharya
 tools/drone-acharya/drone-acharya

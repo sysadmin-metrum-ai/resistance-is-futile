@@ -5,9 +5,14 @@ from cflib.crazyflie.syncCrazyflie import SyncCrazyflie
 from cflib.crazyflie.log import LogConfig
 
 cflib.crtp.init_drivers()
-URI = "radio://0/90/2M"
 
-print("Connecting...")
+available = cflib.crtp.scan_interfaces()
+if not available:
+    print("No Crazyflie found.")
+    import sys; sys.exit(1)
+URI = available[0][0]
+
+print(f"Connecting to {URI}...")
 with SyncCrazyflie(URI, cf=Crazyflie(rw_cache="./cache")) as scf:
     cf = scf.cf
 
