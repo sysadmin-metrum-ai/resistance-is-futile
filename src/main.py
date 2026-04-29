@@ -3,10 +3,14 @@
 Main entry point that sets up the API server with all routes.
 """
 
+import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import redis.asyncio as redis
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(levelname)s: %(message)s")
+logging.getLogger("src.swarm").setLevel(logging.INFO)
 
 from src.core.config import get_settings
 from src.api.routes.missions import router as missions_router
@@ -17,6 +21,7 @@ from src.api.routes.led import router as led_router
 from src.api.routes.images import router as images_router
 from src.api.routes.fleets import router as fleets_router
 from src.api.routes.anchors import router as anchors_router
+from src.api.routes.swarm import router as swarm_router
 
 
 # Global Redis connection
@@ -90,6 +95,8 @@ app.include_router(led_router, prefix="/api/led", tags=["led"])
 app.include_router(images_router, prefix="/api/images", tags=["images"])
 app.include_router(fleets_router, prefix="/api/fleets", tags=["fleets"])
 app.include_router(anchors_router, prefix="/api/anchors", tags=["anchors"])
+app.include_router(swarm_router, prefix="/api/swarm", tags=["swarm"])
+app.include_router(swarm_router, prefix="/swarm", tags=["swarm"])
 
 
 @app.get("/")
