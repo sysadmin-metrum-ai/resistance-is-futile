@@ -8,16 +8,15 @@ from fastapi import APIRouter, Depends, Header, HTTPException, status
 from pydantic import BaseModel, Field
 
 from src.core.config import get_settings
-from src.swarm.models import MAX_SWARM_SIZE
-from src.swarm.models import MIN_SWARM_SIZE
-from src.swarm.models import DroneCandidate
-from src.swarm.models import HealthThresholds
-from src.swarm.models import MissionSpec
 from src.swarm.health import CflibHealthProbe
 from src.swarm.health import check_candidates_concurrently
+from src.swarm.models import DroneCandidate
+from src.swarm.models import HealthThresholds
+from src.swarm.models import MAX_SWARM_SIZE
+from src.swarm.models import MIN_SWARM_SIZE
+from src.swarm.models import MissionSpec
 from src.swarm.service import SwarmDeployService
 from src.swarm.service import get_swarm_deploy_service
-from src.swarm.session import cache_health_results
 
 router = APIRouter()
 
@@ -26,7 +25,7 @@ class SwarmDeployRequest(BaseModel):
     """One deploy-style request for a full 3-5 drone swarm mission."""
 
     swarm_size: int = Field(MIN_SWARM_SIZE, ge=MIN_SWARM_SIZE, le=MAX_SWARM_SIZE)
-    formation: Literal["line", "triangle", "diamond", "v"] = "line"
+    formation: Literal["line", "triangle", "diamond", "v"] = "triangle"
     pattern: Literal["line_shift", "square", "hold", "up_forward"] = "line_shift"
     final_pose: tuple[float, float, float] = (0.50, 0.0, 0.55)
     slot_spacing_m: float = Field(0.45, gt=0)
@@ -128,7 +127,6 @@ async def check_swarm_health(
         probe=CflibHealthProbe(),
         thresholds=thresholds,
     )
-    cache_health_results(results)
     return SwarmHealthResponse(results=[result.to_dict() for result in results])
 
 

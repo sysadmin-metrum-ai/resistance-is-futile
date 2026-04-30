@@ -19,6 +19,33 @@ def test_formation_slots_follow_dynamic_swarm_size():
         assert all(slot[2] == 0.6 for slot in slots)
 
 
+def test_triangle_formation_uses_stacked_3d_geometry():
+    spacing = 0.4
+
+    five = formation_slots(MissionSpec(swarm_size=5, formation="triangle", slot_spacing_m=spacing, no_fly_zone_paths=()))
+    four = formation_slots(MissionSpec(swarm_size=4, formation="triangle", slot_spacing_m=spacing, no_fly_zone_paths=()))
+    three = formation_slots(MissionSpec(swarm_size=3, formation="triangle", slot_spacing_m=spacing, no_fly_zone_paths=()))
+
+    assert five == [
+        (0.5, -0.4, 0.55),
+        (0.5, 0.0, 0.55),
+        (0.5, 0.4, 0.55),
+        (0.68, -0.2, 0.8500000000000001),
+        (0.68, 0.2, 0.8500000000000001),
+    ]
+    assert four == [
+        (0.5, -0.30000000000000004, 0.55),
+        (0.5, 0.1, 0.55),
+        (0.68, -0.1, 0.8500000000000001),
+        (0.68, 0.30000000000000004, 0.8500000000000001),
+    ]
+    assert three == [
+        (0.5, -0.2, 0.55),
+        (0.5, 0.2, 0.55),
+        (0.68, 0.0, 0.8500000000000001),
+    ]
+
+
 def test_optimal_assignment_minimizes_total_distance():
     measured = [(0.0, 1.0, 0.5), (0.0, -1.0, 0.5), (0.0, 0.0, 0.5)]
     targets = [(0.0, -1.0, 0.5), (0.0, 0.0, 0.5), (0.0, 1.0, 0.5)]
@@ -110,6 +137,7 @@ def test_build_swarm_plan_reroutes_server_no_fly_zone_path():
     spec = MissionSpec(
         swarm_size=3,
         final_pose=(1.20, 0.0, 0.10),
+        formation="line",
         pattern="hold",
         slot_spacing_m=2.0,
         min_separation_m=0.10,

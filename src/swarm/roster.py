@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 from src.swarm.health import normalize_uri
 from src.swarm.models import DroneCandidate
 from src.swarm.models import DroneHealth
@@ -9,6 +11,9 @@ from src.swarm.models import MAX_SWARM_SIZE
 from src.swarm.models import MIN_SWARM_SIZE
 from src.swarm.models import MissionSpec
 from src.swarm.models import SwarmSelection
+
+DEFAULT_DISCOVERY_URI_PREFIX = "radio://0/80/2M/E7E7E7E7"
+DEFAULT_DISCOVERY_COUNT = 9
 
 
 def discover_candidates(allowed_uris: tuple[str, ...] = ()) -> list[DroneCandidate]:
@@ -23,7 +28,18 @@ def discover_candidates(allowed_uris: tuple[str, ...] = ()) -> list[DroneCandida
         return []
 
     cflib.crtp.init_drivers()
-    return [DroneCandidate(uri=normalize_uri(uri)) for uri, _info in cflib.crtp.scan_interfaces()]
+    scanned = [DroneCandidate(uri=normalize_uri(uri)) for uri, _info in cflib.crtp.scan_interfaces()]
+    if scanned:
+        return scanned
+    return default_radio_candidates()
+
+
+def default_radio_candidates() -> list[DroneCandidate]:
+    """Fallback when Crazyradio scan misses known same-channel fleet URIs."""
+
+    prefix = os.getenv("CRAZYFLIE_URI_PREFIX", DEFAULT_DISCOVERY_URI_PREFIX)
+    count = int(os.getenv("CRAZYFLIE_URI_COUNT", str(DEFAULT_DISCOVERY_COUNT)))
+    return [DroneCandidate(uri=f"{prefix}{index:02d}") for index in range(1, count + 1)]
 
 
 def filter_candidates(
@@ -48,14 +64,23 @@ def filter_candidates(
     return result
 
 
-def select_healthiest_swarm(health: list[DroneHealth], swarm_size: int) -> SwarmSelection:
-    """Select the highest scoring ready drones and reject the rest."""
+def select_healthiest_swarm(
+    health: list[DroneHealth],
+    swarm_size: int,
+    *,
+    minimum_size: int | None = None,
+) -> SwarmSelection:
+    """Select the highest scoring ready drones, allowing degraded geometry."""
 
     if not MIN_SWARM_SIZE <= swarm_size <= MAX_SWARM_SIZE:
         raise ValueError(f"swarm_size must be {MIN_SWARM_SIZE}..{MAX_SWARM_SIZE}")
+    required_size = minimum_size if minimum_size is not None else swarm_size
+    if required_size < MIN_SWARM_SIZE or required_size > swarm_size:
+        raise ValueError("minimum_size must be between MIN_SWARM_SIZE and swarm_size")
 
     ready = sorted((item for item in health if item.ready), key=lambda item: item.score, reverse=True)
-    selected = tuple(ready[:swarm_size])
+    selected_size = min(swarm_size, len(ready))
+    selected = tuple(ready[:selected_size])
     selected_uris = {item.uri for item in selected}
     rejected = tuple(
         sorted(
@@ -64,7 +89,7 @@ def select_healthiest_swarm(health: list[DroneHealth], swarm_size: int) -> Swarm
             reverse=True,
         )
     )
-    return SwarmSelection(selected=selected, rejected=rejected, required_size=swarm_size)
+    return SwarmSelection(selected=selected, rejected=rejected, required_size=required_size)
 
 
 def candidates_for_spec(spec: MissionSpec) -> list[DroneCandidate]:

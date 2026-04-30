@@ -36,12 +36,10 @@ class DroneCandidate:
 class HealthThresholds:
     """Minimum health needed before a drone can be selected."""
 
-    # WARNING: relaxed for short takeoff tests. Restore to 3.75 / 30
-    # before any real mission longer than ~10 seconds in the air.
-    min_voltage: float = 3.50
-    min_battery_percent: int = 5
+    min_voltage: float = 3.75
+    min_battery_percent: int = 30
     min_connection_quality: int = 70
-    health_timeout_s: float = 8.0
+    health_timeout_s: float = 12.0
     estimator_timeout_s: float = 5.0
     max_concurrent_checks: int = 1
 
@@ -110,7 +108,7 @@ class MissionSpec:
     """
 
     swarm_size: int = MIN_SWARM_SIZE
-    formation: Literal["line", "triangle", "diamond", "v"] = "line"
+    formation: Literal["line", "triangle", "diamond", "v"] = "triangle"
     pattern: Literal["line_shift", "square", "hold", "up_forward"] = "line_shift"
     final_pose: Vec3 = (0.50, 0.0, 0.55)
     slot_spacing_m: float = 0.45

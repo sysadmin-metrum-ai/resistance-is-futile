@@ -1,4 +1,3 @@
-import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -7,14 +6,6 @@ from src.swarm.health import StaticHealthProbe
 from src.swarm.models import DroneHealth
 from src.swarm.service import SwarmDeployService
 from src.swarm.session import SwarmSessionRunner
-from src.swarm.session import clear_health_cache
-
-
-@pytest.fixture(autouse=True)
-def _reset_cache():
-    clear_health_cache()
-    yield
-    clear_health_cache()
 
 
 def make_client(health_by_uri: dict[str, DroneHealth], active_mission_id: str | None = None) -> TestClient:
@@ -103,3 +94,4 @@ def test_swarm_health_endpoint_returns_live_health(monkeypatch):
     data = response.json()
     assert len(data["results"]) == 3
     assert all(item["ready"] for item in data["results"])
+

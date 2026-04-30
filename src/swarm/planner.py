@@ -269,14 +269,28 @@ def _pattern_points(slot: Vec3, spec: MissionSpec) -> tuple[Vec3, ...]:
 
 
 def _triangle_offsets(n: int, spacing: float) -> list[Vec3]:
-    base = [
-        (0.0, 0.0, spacing * 0.75),
-        (-spacing * 0.5, -spacing * 0.5, 0.0),
-        (-spacing * 0.5, spacing * 0.5, 0.0),
-        (-spacing, -spacing, 0.0),
-        (-spacing, spacing, 0.0),
+    top_z = spacing * 0.75
+    top_x = spacing * 0.45
+    if n == 5:
+        return [
+            (0.0, -spacing, 0.0),
+            (0.0, 0.0, 0.0),
+            (0.0, spacing, 0.0),
+            (top_x, -spacing * 0.5, top_z),
+            (top_x, spacing * 0.5, top_z),
+        ]
+    if n == 4:
+        return [
+            (0.0, -spacing * 0.75, 0.0),
+            (0.0, spacing * 0.25, 0.0),
+            (top_x, -spacing * 0.25, top_z),
+            (top_x, spacing * 0.75, top_z),
+        ]
+    return [
+        (0.0, -spacing * 0.5, 0.0),
+        (0.0, spacing * 0.5, 0.0),
+        (top_x, 0.0, top_z),
     ]
-    return base[:n]
 
 
 def _diamond_offsets(n: int, spacing: float) -> list[Vec3]:

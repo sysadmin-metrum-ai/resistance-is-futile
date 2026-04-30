@@ -41,8 +41,14 @@ class SwarmDeployService:
                 return prepared
 
             if spec.dry_run:
-                events = tuple(self.runner.executor.execute(prepared.plan, arm=False))
-                result = replace(prepared, state=MissionState.DRY_RUN, events=events, message="dry_run")
+                execution = self.runner.executor.execute(prepared.plan, arm=False)
+                result = replace(
+                    prepared,
+                    state=MissionState.DRY_RUN,
+                    plan=execution.plan,
+                    events=execution.events,
+                    message="dry_run",
+                )
                 self._missions[result.mission_id] = result
                 await self._publish(result)
                 return result

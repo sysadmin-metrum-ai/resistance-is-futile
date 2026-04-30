@@ -157,22 +157,37 @@ class CflibHealthProbe:
         )
 
     def _read_power(self, log_cls, cf) -> tuple[float | None, int | None, bool | None]:
-        data = self._read_log_once(
-            log_cls,
-            cf,
-            name="SwarmPower",
-            variables=(
-                ("pm.vbat", "float"),
-                ("pm.batteryLevel", "uint8_t"),
-                ("health.batteryPass", "uint8_t"),
-            ),
-            sample_s=0.45,
+        voltages: list[float] = []
+        percentages: list[int] = []
+        pass_values: list[bool] = []
+        for _ in range(3):
+            data = self._read_log_once(
+                log_cls,
+                cf,
+                name="SwarmPower",
+                variables=(
+                    ("pm.vbat", "float"),
+                    ("pm.batteryLevel", "uint8_t"),
+                    ("health.batteryPass", "uint8_t"),
+                ),
+                sample_s=0.35,
+            )
+            voltage = _float_or_none(data.get("pm.vbat"))
+            battery_percent = _int_or_none(data.get("pm.batteryLevel"))
+            raw_pass = _int_or_none(data.get("health.batteryPass"))
+            if voltage is not None:
+                voltages.append(voltage)
+            if battery_percent is not None:
+                percentages.append(battery_percent)
+            if raw_pass is not None:
+                pass_values.append(raw_pass != 0)
+            time.sleep(0.1)
+
+        return (
+            min(voltages) if voltages else None,
+            min(percentages) if percentages else None,
+            all(pass_values) if pass_values else None,
         )
-        voltage = _float_or_none(data.get("pm.vbat"))
-        battery_percent = _int_or_none(data.get("pm.batteryLevel"))
-        raw_pass = _int_or_none(data.get("health.batteryPass"))
-        battery_pass = None if raw_pass is None else raw_pass != 0
-        return voltage, battery_percent, battery_pass
 
     def _read_pose(self, log_cls, cf) -> Vec3 | None:
         data = self._read_log_once(

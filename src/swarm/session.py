@@ -3,18 +3,18 @@
 from __future__ import annotations
 
 import asyncio
-import time
 import uuid
 from dataclasses import dataclass
+from dataclasses import replace
 
 from src.swarm.executor import SwarmExecutor
 from src.swarm.health import CflibHealthProbe
 from src.swarm.health import HealthProbe
 from src.swarm.health import check_candidates_concurrently
-from src.swarm.health import normalize_uri
 from src.swarm.models import DroneCandidate
 from src.swarm.models import DroneHealth
 from src.swarm.models import HealthThresholds
+from src.swarm.models import MIN_SWARM_SIZE
 from src.swarm.models import MissionSpec
 from src.swarm.models import MissionState
 from src.swarm.models import SwarmSelection
@@ -23,34 +23,6 @@ from src.swarm.planner import build_swarm_plan
 from src.swarm.pose import launch_poses_from_health
 from src.swarm.roster import candidates_for_spec
 from src.swarm.roster import select_healthiest_swarm
-
-HEALTH_CACHE_TTL_S = 30.0
-_health_cache: dict[str, tuple[float, DroneHealth]] = {}
-
-
-def cache_health_results(results: list[DroneHealth]) -> None:
-    """Store fresh health snapshots so deploy can skip the slow recheck."""
-    now = time.monotonic()
-    for health in results:
-        _health_cache[normalize_uri(health.uri)] = (now, health)
-
-
-def clear_health_cache() -> None:
-    _health_cache.clear()
-
-
-def _get_cached_health(uris: list[str]) -> list[DroneHealth] | None:
-    now = time.monotonic()
-    cached: list[DroneHealth] = []
-    for uri in uris:
-        entry = _health_cache.get(normalize_uri(uri))
-        if entry is None:
-            return None
-        timestamp, health = entry
-        if now - timestamp > HEALTH_CACHE_TTL_S:
-            return None
-        cached.append(health)
-    return cached
 
 
 @dataclass(frozen=True)
@@ -92,13 +64,13 @@ class SwarmSessionRunner:
         if prepared.plan is None or prepared.state == MissionState.REFUSED:
             return prepared
         if spec.dry_run:
-            events = tuple(self.executor.execute(prepared.plan, arm=False))
+            result = self.executor.execute(prepared.plan, arm=False)
             return DeployResult(
                 prepared.mission_id,
                 MissionState.DRY_RUN,
                 prepared.selection,
-                prepared.plan,
-                events,
+                result.plan,
+                result.events,
                 message="dry_run",
             )
         if not spec.arm:
@@ -119,23 +91,21 @@ class SwarmSessionRunner:
             selection = SwarmSelection(selected=(), rejected=(), required_size=spec.swarm_size)
             return DeployResult(mission_id, MissionState.REFUSED, selection, None, message="no_candidates")
 
-        cached = _get_cached_health([candidate.uri for candidate in candidate_list])
-        if cached is not None:
-            health = cached
-        else:
-            health = await check_candidates_concurrently(
-                candidate_list,
-                probe=self.probe,
-                thresholds=self.thresholds,
-            )
-            cache_health_results(health)
-        selection = select_healthiest_swarm(health, spec.swarm_size)
+        health = await check_candidates_concurrently(
+            candidate_list,
+            probe=self.probe,
+            thresholds=self.thresholds,
+        )
+        health = [_reject_missing_pose(item) for item in health]
+        minimum_size = minimum_viable_swarm_size(spec.swarm_size)
+        selection = select_healthiest_swarm(health, spec.swarm_size, minimum_size=minimum_size)
         if not selection.ready:
             return DeployResult(mission_id, MissionState.REFUSED, selection, None, message="insufficient_healthy_drones")
 
         try:
-            poses = launch_poses_from_health(selection.selected, spec.hover_z)
-            plan = build_swarm_plan(poses, spec)
+            planned_spec = replace(spec, swarm_size=len(selection.selected))
+            poses = launch_poses_from_health(selection.selected, planned_spec.hover_z)
+            plan = build_swarm_plan(poses, planned_spec)
         except ValueError as exc:
             return DeployResult(mission_id, MissionState.REFUSED, selection, None, message=str(exc))
         return DeployResult(mission_id, MissionState.ACCEPTED, selection, plan, message="prepared")
@@ -143,13 +113,14 @@ class SwarmSessionRunner:
     async def execute_prepared(self, prepared: DeployResult, spec: MissionSpec) -> DeployResult:
         if prepared.plan is None:
             return prepared
-        events = await asyncio.to_thread(self.executor.execute, prepared.plan, arm=True)
+        result = await asyncio.to_thread(self.executor.execute, prepared.plan, arm=True)
+        selection = _selection_for_plan(prepared.selection, result.plan)
         return DeployResult(
             prepared.mission_id,
             MissionState.COMPLETED,
-            prepared.selection,
-            prepared.plan,
-            tuple(events),
+            selection,
+            result.plan,
+            result.events,
             message="completed",
         )
 
@@ -158,6 +129,7 @@ def _plan_to_dict(plan: SwarmPlan | None) -> dict | None:
     if plan is None:
         return None
     return {
+        "swarm_size": plan.spec.swarm_size,
         "assignment_cost": plan.assignment_cost,
         "formation": plan.spec.formation,
         "pattern": plan.spec.pattern,
@@ -178,3 +150,22 @@ def _plan_to_dict(plan: SwarmPlan | None) -> dict | None:
             for drone in plan.drones
         ],
     }
+
+
+def minimum_viable_swarm_size(requested_size: int) -> int:
+    """Require at least 3 drones and more than half of the requested swarm."""
+
+    return max(MIN_SWARM_SIZE, requested_size // 2 + 1)
+
+
+def _reject_missing_pose(health: DroneHealth) -> DroneHealth:
+    if not health.ready or health.pose is not None:
+        return health
+    return replace(health, ready=False, reasons=(*health.reasons, "missing_pose"))
+
+
+def _selection_for_plan(selection: SwarmSelection, plan: SwarmPlan) -> SwarmSelection:
+    planned_uris = {drone.uri for drone in plan.drones}
+    selected = tuple(health for health in selection.selected if health.uri in planned_uris)
+    dropped = tuple(health for health in selection.selected if health.uri not in planned_uris)
+    return replace(selection, selected=selected, rejected=(*selection.rejected, *dropped))

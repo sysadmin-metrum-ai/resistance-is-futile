@@ -9,6 +9,7 @@ from src.swarm.models import DroneCandidate
 from src.swarm.models import DroneHealth
 from src.swarm.models import HealthThresholds
 from src.swarm.roster import select_healthiest_swarm
+from src.swarm.roster import default_radio_candidates
 
 
 class SlowProbe:
@@ -64,6 +65,17 @@ def test_score_health_battery_pass_false_is_advisory_not_blocking():
     assert ready is True
     assert "battery_health_failed" not in reasons
     assert score > 0
+
+
+def test_default_radio_candidates_generate_known_fleet_range(monkeypatch):
+    monkeypatch.delenv("CRAZYFLIE_URI_COUNT", raising=False)
+    monkeypatch.delenv("CRAZYFLIE_URI_PREFIX", raising=False)
+
+    candidates = default_radio_candidates()
+
+    assert len(candidates) == 9
+    assert candidates[0].uri == "radio://0/80/2M/E7E7E7E701"
+    assert candidates[-1].uri == "radio://0/80/2M/E7E7E7E709"
 
 
 def test_select_healthiest_swarm_uses_top_scores():
