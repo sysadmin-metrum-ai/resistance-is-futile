@@ -125,6 +125,7 @@ class MissionSpec:
     arm: bool = False
     allowed_uris: tuple[str, ...] = ()
     denied_uris: tuple[str, ...] = ()
+    callback_url: str | None = None
     metadata: dict = field(default_factory=dict)
 
     def validate(self) -> None:

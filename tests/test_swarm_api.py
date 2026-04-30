@@ -78,6 +78,29 @@ def test_swarm_deploy_rejects_when_mission_already_active():
     assert "already active" in response.json()["detail"]
 
 
+def test_swarm_deploy_posts_callback_for_terminal_result(monkeypatch):
+    calls = []
+
+    async def fake_callback(self, result, spec):
+        calls.append((spec.callback_url, result.state.value, result.message))
+
+    monkeypatch.setattr(SwarmDeployService, "_post_callback", fake_callback)
+    client = make_client({uri: healthy(uri, i + 80, i * 0.4) for i, uri in enumerate(("a", "b", "c"))})
+
+    response = client.post(
+        "/swarm/deploy",
+        json={
+            "swarm_size": 3,
+            "allowed_uris": ["a", "b", "c"],
+            "dry_run": True,
+            "callback_url": "http://localhost:8765/drone/swarm-complete",
+        },
+    )
+
+    assert response.status_code == 200
+    assert calls == [("http://localhost:8765/drone/swarm-complete", "dry_run", "dry_run")]
+
+
 def test_swarm_health_endpoint_returns_live_health(monkeypatch):
     app = FastAPI()
     app.include_router(swarm_route.router, prefix="/swarm")

@@ -37,6 +37,7 @@ class SwarmDeployRequest(BaseModel):
     arm: bool = False
     allowed_uris: tuple[str, ...] = ()
     denied_uris: tuple[str, ...] = ()
+    callback_url: str | None = Field(None, description="Optional infra callback URL for terminal deploy status")
 
     def to_spec(self) -> MissionSpec:
         return MissionSpec(
@@ -53,6 +54,7 @@ class SwarmDeployRequest(BaseModel):
             arm=self.arm,
             allowed_uris=self.allowed_uris,
             denied_uris=self.denied_uris,
+            callback_url=self.callback_url,
         )
 
 

@@ -6,6 +6,8 @@ import asyncio
 import logging
 from dataclasses import replace
 
+import httpx
+
 from src.services.event_broadcaster import get_broadcaster
 from src.swarm.models import MissionSpec
 from src.swarm.models import MissionState
@@ -14,6 +16,7 @@ from src.swarm.session import SwarmSessionRunner
 
 logger = logging.getLogger(__name__)
 _PUBLISH_TIMEOUT_S = 1.5
+_CALLBACK_TIMEOUT_S = 3.0
 
 
 class SwarmDeployService:
@@ -37,7 +40,7 @@ class SwarmDeployService:
             prepared = await self.runner.prepare(spec)
             if prepared.state == MissionState.REFUSED or prepared.plan is None:
                 self._missions[prepared.mission_id] = prepared
-                await self._publish(prepared)
+                await self._publish_and_callback(prepared, spec)
                 return prepared
 
             if spec.dry_run:
@@ -50,13 +53,13 @@ class SwarmDeployService:
                     message="dry_run",
                 )
                 self._missions[result.mission_id] = result
-                await self._publish(result)
+                await self._publish_and_callback(result, spec)
                 return result
 
             if not spec.arm:
                 result = replace(prepared, state=MissionState.REFUSED, message="arm_required")
                 self._missions[result.mission_id] = result
-                await self._publish(result)
+                await self._publish_and_callback(result, spec)
                 return result
 
             self._active_mission_id = prepared.mission_id
@@ -117,7 +120,11 @@ class SwarmDeployService:
         if self._active_mission_id == result.mission_id:
             self._active_mission_id = None
             self._active_task = None
+        await self._publish_and_callback(result, spec)
+
+    async def _publish_and_callback(self, result: DeployResult, spec: MissionSpec) -> None:
         await self._publish(result)
+        await self._post_callback(result, spec)
 
     async def _publish(self, result: DeployResult) -> None:
         # Redis is best-effort: never let a missing/slow broker stall a deploy.
@@ -137,6 +144,28 @@ class SwarmDeployService:
             await asyncio.wait_for(_do_publish(), timeout=_PUBLISH_TIMEOUT_S)
         except (asyncio.TimeoutError, Exception) as exc:
             logger.debug("swarm publish skipped: %s", exc)
+
+    async def _post_callback(self, result: DeployResult, spec: MissionSpec) -> None:
+        if not spec.callback_url:
+            return
+
+        selected = [health.uri for health in result.selection.selected]
+        payload = {
+            "success": True,
+            "swarm_success": result.state in {MissionState.COMPLETED, MissionState.DRY_RUN},
+            "swarm_safe_to_fly": result.plan is not None and len(selected) >= result.selection.required_size,
+            "mission_id": result.mission_id,
+            "state": result.state.value,
+            "message": result.message,
+            "selected_count": len(selected),
+            "selected": selected,
+        }
+        try:
+            async with httpx.AsyncClient(timeout=_CALLBACK_TIMEOUT_S) as client:
+                response = await client.post(spec.callback_url, json=payload)
+                response.raise_for_status()
+        except Exception as exc:
+            logger.warning("swarm callback skipped: %s", exc)
 
 
 _deploy_service: SwarmDeployService | None = None
