@@ -21,6 +21,7 @@ from src.api.routes.led import router as led_router
 from src.api.routes.images import router as images_router
 from src.api.routes.fleets import router as fleets_router
 from src.api.routes.anchors import router as anchors_router
+from src.api.routes.swarm import dtw_router
 from src.api.routes.swarm import router as swarm_router
 
 
@@ -97,6 +98,7 @@ app.include_router(fleets_router, prefix="/api/fleets", tags=["fleets"])
 app.include_router(anchors_router, prefix="/api/anchors", tags=["anchors"])
 app.include_router(swarm_router, prefix="/api/swarm", tags=["swarm"])
 app.include_router(swarm_router, prefix="/swarm", tags=["swarm"])
+app.include_router(dtw_router, tags=["dtw"])
 
 
 @app.get("/")

@@ -23,7 +23,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--api-key", default=None, help="Optional X-API-Key value")
     parser.add_argument("--swarm-size", type=int, default=5, choices=[3, 4, 5])
     parser.add_argument("--formation", choices=["line", "triangle", "diamond", "v"], default="triangle")
-    parser.add_argument("--pattern", choices=["line_shift", "square", "hold", "up_forward"], default="hold")
+    parser.add_argument("--pattern", choices=["line_shift", "square", "hold", "up_forward"], default="up_forward")
     parser.add_argument("--allow-uri", action="append", default=[], help="Candidate URI; repeatable")
     parser.add_argument("--deny-uri", action="append", default=[], help="Excluded URI; repeatable")
     parser.add_argument("--sleep-s", type=float, default=5.0, help="Pause between completed missions")
@@ -108,7 +108,7 @@ def main(argv: list[str] | None = None) -> int:
                 flush=True,
             )
 
-            if data.get("state") == "running":
+            if data.get("state") not in TERMINAL_STATES:
                 data = wait_for_terminal(client, args, mission_id)
 
             selected_count = len(data.get("selected", []))

@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from dataclasses import replace
 from typing import Protocol
@@ -23,8 +24,15 @@ logger = logging.getLogger(__name__)
 # startup jitter so every drone has time to reach its sleep_until call.
 SCHEDULE_PREP_S = 1.0
 LED_BLINK_INTERVAL_S = 0.75
+LED_POST_LAND_S = 3.0
 IN_FLIGHT_BATTERY_LOG_MS = 1000
-IN_FLIGHT_LOW_VOLTAGE_SAMPLES = 2
+IN_FLIGHT_LOW_BATTERY_PERCENT = 15
+IN_FLIGHT_LOW_VOLTAGE = 3.65
+IN_FLIGHT_CRITICAL_VOLTAGE = 3.45
+IN_FLIGHT_LOW_BATTERY_SAMPLES = 5
+IN_FLIGHT_CRITICAL_BATTERY_SAMPLES = 2
+IN_FLIGHT_WATCHDOG_LAND_S = 3.0
+BatteryTelemetryCallback = Callable[[str, dict], None]
 
 
 @dataclass(frozen=True)
@@ -83,7 +91,7 @@ def _build_schedule(
         t += spec.move_s + spec.hold_s
 
     land_at = t
-    cleanup_at = t + spec.land_s + 0.3
+    cleanup_at = t + spec.land_s + LED_POST_LAND_S
     return SwarmSchedule(
         takeoff_at=takeoff_at,
         formation_steps=tuple(formation_steps),
@@ -190,18 +198,30 @@ class CflibDroneConnection:
     def close(self) -> None:
         self._scf.close_link()
 
+    def set_led_red(self) -> None:
+        self._set_led_color("red", 100, 0, 0)
+
     def set_led_blue(self) -> None:
-        """Light the bottom LED ring deck full blue (WRGB8888 = 0x000000FF)."""
+        self._set_led_color("blue", 0, 0, 100)
+
+    def set_led_orange(self) -> None:
+        self._set_led_color("orange", 100, 35, 0)
+
+    def set_led_green(self) -> None:
+        self._set_led_color("green", 0, 100, 0)
+
+    def _set_led_color(self, label: str, red: int, green: int, blue: int) -> None:
         try:
             if self._led_mode == "colorLedBot":
-                self._scf.cf.param.set_value("colorLedBot.wrgb8888", "255")
+                wrgb8888 = (red << 16) | (green << 8) | blue
+                self._scf.cf.param.set_value("colorLedBot.wrgb8888", str(wrgb8888))
             elif self._led_mode == "ring":
                 self._scf.cf.param.set_value("ring.effect", "7")
-                self._scf.cf.param.set_value("ring.solidRed", "0")
-                self._scf.cf.param.set_value("ring.solidGreen", "0")
-                self._scf.cf.param.set_value("ring.solidBlue", "100")
+                self._scf.cf.param.set_value("ring.solidRed", str(red))
+                self._scf.cf.param.set_value("ring.solidGreen", str(green))
+                self._scf.cf.param.set_value("ring.solidBlue", str(blue))
         except Exception as exc:
-            logger.warning("swarm executor: %s LED set failed: %s", self.uri, exc)
+            logger.warning("swarm executor: %s LED %s set failed: %s", self.uri, label, exc)
 
     def set_led_off(self) -> None:
         """Turn the bottom LED ring deck fully off."""
@@ -216,10 +236,10 @@ class CflibDroneConnection:
     def can_blink_led(self) -> bool:
         return self._led_mode in {"colorLedBot", "ring"}
 
-    def start_battery_watch(self) -> None:
+    def start_battery_watch(self, telemetry_callback: BatteryTelemetryCallback | None = None) -> None:
         from cflib.crazyflie.log import LogConfig
 
-        self._battery_watch = BatteryWatch(self.uri, self.commander, self._scf.cf, LogConfig)
+        self._battery_watch = BatteryWatch(self.uri, self.commander, self._scf.cf, LogConfig, telemetry_callback)
         self._battery_watch.start()
 
     def stop_battery_watch(self) -> bool:
@@ -229,6 +249,9 @@ class CflibDroneConnection:
         self._battery_watch.stop()
         self._battery_watch = None
         return triggered
+
+    def is_battery_watch_triggered(self) -> bool:
+        return self._battery_watch is not None and self._battery_watch.triggered
 
     def _detect_led_mode(self) -> str:
         if self._has_param("colorLedBot", "wrgb8888"):
@@ -264,7 +287,6 @@ class CflibDroneConnection:
         logger.info("swarm executor: %s waiting for kalman convergence", self.uri)
         t0 = time.monotonic()
         self._reset_and_wait_estimator(cf, timeout_s=8.0)
-        self._assert_power_ready(cf)
         logger.info(
             "swarm executor: %s kalman converged in %.2fs, arming",
             self.uri,
@@ -352,13 +374,23 @@ class CflibDroneConnector:
 class BatteryWatch:
     """Low-rate in-flight battery guard that asks only the weak drone to land."""
 
-    def __init__(self, uri: str, commander: Commander, cf, log_cls):
+    def __init__(
+        self,
+        uri: str,
+        commander: Commander,
+        cf,
+        log_cls,
+        telemetry_callback: BatteryTelemetryCallback | None = None,
+    ):
         self.uri = uri
         self.commander = commander
         self.cf = cf
         self.thresholds = HealthThresholds()
         self.low_samples = 0
+        self.critical_samples = 0
         self.triggered = False
+        self.trigger_reason: str | None = None
+        self._telemetry_callback = telemetry_callback
         self._log = log_cls(name=f"BattWatch{int(time.time() * 1000) % 100000}", period_in_ms=IN_FLIGHT_BATTERY_LOG_MS)
         self._log.add_variable("pm.vbat", "float")
         self._log.add_variable("pm.batteryLevel", "uint8_t")
@@ -384,26 +416,65 @@ class BatteryWatch:
             return
         voltage = data.get("pm.vbat")
         percent = data.get("pm.batteryLevel")
-        low_voltage = voltage is None or float(voltage) < self.thresholds.min_voltage
-        low_percent = percent is None or int(percent) < self.thresholds.min_battery_percent
-        if low_voltage or low_percent:
-            self.low_samples += 1
-        else:
-            self.low_samples = 0
-        if self.low_samples < IN_FLIGHT_LOW_VOLTAGE_SAMPLES:
+        voltage_value = float(voltage) if voltage is not None else None
+        percent_value = int(percent) if percent is not None else None
+        reason = self._update_battery_counters(voltage_value, percent_value)
+        if reason is None:
+            self._publish_sample(voltage_value, percent_value)
             return
 
         self.triggered = True
+        self.trigger_reason = reason
         logger.warning(
-            "swarm executor: %s battery watchdog landing: voltage=%s percent=%s",
+            "swarm executor: %s battery watchdog landing: voltage=%s percent=%s reason=%s",
             self.uri,
             voltage,
             percent,
+            reason,
         )
         try:
-            self.commander.land(0.0, 2.0, yaw=None)
+            self.commander.land(0.0, IN_FLIGHT_WATCHDOG_LAND_S, yaw=None)
         except Exception as exc:
             logger.warning("swarm executor: %s battery watchdog land failed: %s", self.uri, exc)
+        self._publish_sample(voltage_value, percent_value)
+
+    def _update_battery_counters(self, voltage: float | None, battery_percent: int | None) -> str | None:
+        critical_voltage = voltage is not None and voltage <= IN_FLIGHT_CRITICAL_VOLTAGE
+        if critical_voltage:
+            self.critical_samples += 1
+        else:
+            self.critical_samples = 0
+        if self.critical_samples >= IN_FLIGHT_CRITICAL_BATTERY_SAMPLES:
+            return "critical_voltage"
+
+        low_voltage = voltage is not None and voltage <= IN_FLIGHT_LOW_VOLTAGE
+        low_percent = battery_percent is not None and battery_percent < IN_FLIGHT_LOW_BATTERY_PERCENT
+        if low_voltage:
+            self.low_samples += 1
+        else:
+            self.low_samples = 0
+        if self.low_samples >= IN_FLIGHT_LOW_BATTERY_SAMPLES:
+            return "low_percent_and_voltage" if low_percent else "low_voltage"
+        return None
+
+    def _publish_sample(self, voltage: float | None, battery_percent: int | None) -> None:
+        if self._telemetry_callback is None:
+            return
+        try:
+            self._telemetry_callback(
+                self.uri,
+                {
+                    "voltage": voltage,
+                    "battery_percent": battery_percent,
+                    "low_samples": self.low_samples,
+                    "critical_samples": self.critical_samples,
+                    "watchdog_landed": self.triggered,
+                    "trigger_reason": self.trigger_reason,
+                    "sampled_at": time.time(),
+                },
+            )
+        except Exception:
+            logger.debug("swarm executor: %s battery telemetry callback failed", self.uri, exc_info=True)
 
 
 class SwarmExecutor:
@@ -412,18 +483,29 @@ class SwarmExecutor:
     def __init__(self, connector: DroneConnector | None = None):
         self.connector = connector or CflibDroneConnector()
 
-    def execute(self, plan: SwarmPlan, *, arm: bool) -> ExecutionResult:
+    def execute(
+        self,
+        plan: SwarmPlan,
+        *,
+        arm: bool,
+        telemetry_callback: BatteryTelemetryCallback | None = None,
+    ) -> ExecutionResult:
         if not arm or plan.spec.dry_run:
             return ExecutionResult(tuple(dry_run_events(plan)), plan)
 
         connections: list[DroneConnection] = []
+        prep_blinks: list[tuple[threading.Event, threading.Thread]] = []
         try:
             logger.info("swarm executor: opening %d cflib links", len(plan.drones))
             for drone in plan.drones:
                 t0 = time.monotonic()
                 logger.info("swarm executor: connecting %s", drone.uri)
                 try:
-                    connections.append(self.connector.connect(drone.uri, plan.spec))
+                    connection = self.connector.connect(drone.uri, plan.spec)
+                    connections.append(connection)
+                    prep_blink = _start_led_blink(connection, drone.uri, "red")
+                    if prep_blink is not None:
+                        prep_blinks.append(prep_blink)
                     logger.info("swarm executor: connected %s in %.2fs", drone.uri, time.monotonic() - t0)
                 except BaseException as exc:
                     logger.exception("swarm executor: connect failed for %s: %s", drone.uri, exc)
@@ -431,6 +513,8 @@ class SwarmExecutor:
             plan = _replan_for_remaining(plan, connections, "connect")
             connections = self._configure_in_parallel(connections)
             plan = _replan_for_remaining(plan, connections, "configure")
+            _stop_led_blinks(prep_blinks)
+            prep_blinks = []
             logger.info("swarm executor: all drones configured + armed, building schedule")
 
             n_formation = max(len(d.route_to_formation) for d in plan.drones)
@@ -450,7 +534,7 @@ class SwarmExecutor:
             def worker(connection: DroneConnection, drone_plan: DronePlan) -> None:
                 try:
                     logger.info("swarm executor: %s worker starting", connection.uri)
-                    drone_events = self._execute_one(connection, drone_plan, plan, schedule)
+                    drone_events = self._execute_one(connection, drone_plan, plan, schedule, telemetry_callback)
                     with lock:
                         events.extend(drone_events)
                     logger.info("swarm executor: %s worker finished cleanly", connection.uri)
@@ -472,6 +556,7 @@ class SwarmExecutor:
                 raise RuntimeError("swarm execution failed") from errors[0]
             return ExecutionResult(tuple(events), plan)
         finally:
+            _stop_led_blinks(prep_blinks)
             for connection in connections:
                 try:
                     connection.close()
@@ -528,6 +613,7 @@ class SwarmExecutor:
         drone_plan: DronePlan,
         swarm_plan: SwarmPlan,
         schedule: SwarmSchedule,
+        telemetry_callback: BatteryTelemetryCallback | None = None,
     ) -> list[str]:
         spec = swarm_plan.spec
         uri = drone_plan.uri
@@ -545,42 +631,71 @@ class SwarmExecutor:
         commander.takeoff(spec.hover_z, spec.takeoff_s, yaw=None)
         events.append(f"{uri}:takeoff")
         if hasattr(connection, "start_battery_watch"):
-            connection.start_battery_watch()  # type: ignore[attr-defined]
+            _start_battery_watch(connection, telemetry_callback)
             events.append(f"{uri}:battery_watch_start")
-        blink = _start_led_blue_blink(connection, uri)
+        blink = _start_led_blink(connection, uri, "blue")
         if blink is not None:
-            events.append(f"{uri}:led_blink_start")
+            events.append(f"{uri}:led_blue_blink_start")
+
+        battery_watch_landed = False
+
+        def note_battery_watch_landed() -> bool:
+            nonlocal battery_watch_landed
+            if battery_watch_landed or not _battery_watch_triggered(connection):
+                return battery_watch_landed
+            battery_watch_landed = True
+            events.append(f"{uri}:battery_watch_landed")
+            return True
 
         for fire_at, point in zip(schedule.formation_steps, formation_points):
             _sleep_until(fire_at)
+            if note_battery_watch_landed():
+                break
             commander.go_to(*point, 0.0, spec.move_s, relative=False)
             events.append(f"{uri}:formation")
 
-        _sleep_until(schedule.led_blue_at)
-        if hasattr(connection, "set_led_blue"):
-            connection.set_led_blue()  # type: ignore[attr-defined]
-            if blink is None:
-                events.append(f"{uri}:led_blue")
-            logger.info("swarm executor: %s LED blue", uri)
+        if not battery_watch_landed:
+            _sleep_until(schedule.led_blue_at)
+            if note_battery_watch_landed():
+                pass
 
-        for fire_at, point in zip(schedule.pattern_steps, pattern_points):
-            _sleep_until(fire_at)
-            commander.go_to(*point, 0.0, spec.pattern_s, relative=False)
-            events.append(f"{uri}:pattern")
+        if not battery_watch_landed:
+            for index, (fire_at, point) in enumerate(zip(schedule.pattern_steps, pattern_points)):
+                _sleep_until(fire_at)
+                if note_battery_watch_landed():
+                    break
+                commander.go_to(*point, 0.0, spec.pattern_s, relative=False)
+                events.append(f"{uri}:pattern")
+                if index == 0:
+                    _sleep_until(fire_at + spec.pattern_s)
+                    if blink is not None:
+                        _stop_led_blink(blink)
+                        blink = None
+                    if hasattr(connection, "set_led_orange"):
+                        connection.set_led_orange()  # type: ignore[attr-defined]
+                        events.append(f"{uri}:led_orange")
+                        logger.info("swarm executor: %s LED orange", uri)
 
-        for fire_at, point in zip(schedule.return_steps, return_points):
-            _sleep_until(fire_at)
-            commander.go_to(*point, 0.0, spec.move_s, relative=False)
-            events.append(f"{uri}:return")
+        if not battery_watch_landed:
+            for fire_at, point in zip(schedule.return_steps, return_points):
+                _sleep_until(fire_at)
+                if note_battery_watch_landed():
+                    break
+                commander.go_to(*point, 0.0, spec.move_s, relative=False)
+                events.append(f"{uri}:return")
 
-        _sleep_until(schedule.land_at)
-        commander.land(0.0, spec.land_s, yaw=None)
-        events.append(f"{uri}:land")
+        if not battery_watch_landed:
+            _sleep_until(schedule.land_at)
+            if not note_battery_watch_landed():
+                commander.land(0.0, spec.land_s, yaw=None)
+                events.append(f"{uri}:land")
+                _sleep_until(schedule.land_at + spec.land_s)
+                blink = _replace_led_blink(blink, connection, uri, "green")
+                if blink is not None:
+                    events.append(f"{uri}:led_green_blink_start")
         _sleep_until(schedule.cleanup_at)
         if blink is not None:
-            stop_blink, blink_thread = blink
-            stop_blink.set()
-            blink_thread.join(timeout=1.0)
+            _stop_led_blink(blink)
             events.append(f"{uri}:led_blink_stop")
         if hasattr(connection, "set_led_off"):
             connection.set_led_off()  # type: ignore[attr-defined]
@@ -588,9 +703,10 @@ class SwarmExecutor:
             logger.info("swarm executor: %s LED off", uri)
         if hasattr(connection, "stop_battery_watch"):
             if connection.stop_battery_watch():  # type: ignore[attr-defined]
-                events.append(f"{uri}:battery_watch_landed")
-                raise RuntimeError(f"{uri}: battery watchdog triggered landing")
-            events.append(f"{uri}:battery_watch_stop")
+                if not battery_watch_landed:
+                    events.append(f"{uri}:battery_watch_landed")
+            else:
+                events.append(f"{uri}:battery_watch_stop")
         commander.stop()
         return events
 
@@ -604,28 +720,67 @@ def _pad_route(points: tuple, length: int) -> tuple:
     return points + (points[-1],) * (length - len(points))
 
 
-def _start_led_blue_blink(connection: DroneConnection, uri: str) -> tuple[threading.Event, threading.Thread] | None:
+def _start_led_blink(connection: DroneConnection, uri: str, color: str) -> tuple[threading.Event, threading.Thread] | None:
     if hasattr(connection, "can_blink_led") and not connection.can_blink_led():  # type: ignore[attr-defined]
         return None
-    if not hasattr(connection, "set_led_blue") or not hasattr(connection, "set_led_off"):
+    setter = getattr(connection, f"set_led_{color}", None)
+    if setter is None or not hasattr(connection, "set_led_off"):
         return None
 
     stop = threading.Event()
+    setter()
 
     def blink() -> None:
-        blue = True
+        lit = False
         while not stop.is_set():
-            if blue:
-                connection.set_led_blue()  # type: ignore[attr-defined]
+            if lit:
+                setter()
             else:
                 connection.set_led_off()  # type: ignore[attr-defined]
-            blue = not blue
+            lit = not lit
             stop.wait(LED_BLINK_INTERVAL_S)
 
-    thread = threading.Thread(target=blink, name=f"led-blink-{uri}", daemon=True)
+    thread = threading.Thread(target=blink, name=f"led-{color}-blink-{uri}", daemon=True)
     thread.start()
-    logger.info("swarm executor: %s LED blue blink started", uri)
+    logger.info("swarm executor: %s LED %s blink started", uri, color)
     return stop, thread
+
+
+def _replace_led_blink(
+    current: tuple[threading.Event, threading.Thread] | None,
+    connection: DroneConnection,
+    uri: str,
+    color: str,
+) -> tuple[threading.Event, threading.Thread] | None:
+    if current is not None:
+        _stop_led_blink(current)
+    return _start_led_blink(connection, uri, color)
+
+
+def _stop_led_blinks(blinks: list[tuple[threading.Event, threading.Thread]]) -> None:
+    for blink in blinks:
+        _stop_led_blink(blink)
+
+
+def _stop_led_blink(blink: tuple[threading.Event, threading.Thread]) -> None:
+    stop_blink, blink_thread = blink
+    stop_blink.set()
+    blink_thread.join(timeout=1.0)
+
+
+def _battery_watch_triggered(connection: DroneConnection) -> bool:
+    checker = getattr(connection, "is_battery_watch_triggered", None)
+    return checker is not None and bool(checker())
+
+
+def _start_battery_watch(
+    connection: DroneConnection,
+    telemetry_callback: BatteryTelemetryCallback | None,
+) -> None:
+    try:
+        connection.start_battery_watch(telemetry_callback)  # type: ignore[attr-defined]
+    except TypeError:
+        connection.start_battery_watch()  # type: ignore[attr-defined]
 
 
 def _replan_for_remaining(plan: SwarmPlan, connections: list[DroneConnection], phase: str) -> SwarmPlan:

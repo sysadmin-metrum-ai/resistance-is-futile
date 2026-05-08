@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from dataclasses import replace
 
@@ -23,6 +25,8 @@ from src.swarm.planner import build_swarm_plan
 from src.swarm.pose import launch_poses_from_health
 from src.swarm.roster import candidates_for_spec
 from src.swarm.roster import select_healthiest_swarm
+
+BatteryTelemetryCallback = Callable[[str, dict], None]
 
 
 @dataclass(frozen=True)
@@ -91,10 +95,15 @@ class SwarmSessionRunner:
             selection = SwarmSelection(selected=(), rejected=(), required_size=spec.swarm_size)
             return DeployResult(mission_id, MissionState.REFUSED, selection, None, message="no_candidates")
 
+        thresholds = replace(
+            self.thresholds,
+            health_timeout_s=spec.health_timeout_s,
+            max_concurrent_checks=spec.max_concurrent_checks,
+        )
         health = await check_candidates_concurrently(
             candidate_list,
             probe=self.probe,
-            thresholds=self.thresholds,
+            thresholds=thresholds,
         )
         health = [_reject_missing_pose(item) for item in health]
         minimum_size = minimum_viable_swarm_size(spec.swarm_size)
@@ -110,10 +119,19 @@ class SwarmSessionRunner:
             return DeployResult(mission_id, MissionState.REFUSED, selection, None, message=str(exc))
         return DeployResult(mission_id, MissionState.ACCEPTED, selection, plan, message="prepared")
 
-    async def execute_prepared(self, prepared: DeployResult, spec: MissionSpec) -> DeployResult:
+    async def execute_prepared(
+        self,
+        prepared: DeployResult,
+        spec: MissionSpec,
+        telemetry_callback: BatteryTelemetryCallback | None = None,
+    ) -> DeployResult:
         if prepared.plan is None:
             return prepared
-        result = await asyncio.to_thread(self.executor.execute, prepared.plan, arm=True)
+        execute = self.executor.execute
+        kwargs = {"arm": True}
+        if "telemetry_callback" in inspect.signature(execute).parameters:
+            kwargs["telemetry_callback"] = telemetry_callback
+        result = await asyncio.to_thread(execute, prepared.plan, **kwargs)
         selection = _selection_for_plan(prepared.selection, result.plan)
         return DeployResult(
             prepared.mission_id,

@@ -18,9 +18,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Deploy one dynamic Crazyflie swarm mission")
     parser.add_argument("--swarm-size", type=int, default=3, choices=[3, 4, 5])
     parser.add_argument("--formation", choices=["line", "triangle", "diamond", "v"], default="triangle")
-    parser.add_argument("--pattern", choices=["line_shift", "square", "hold"], default="line_shift")
+    parser.add_argument("--pattern", choices=["line_shift", "square", "hold", "up_forward"], default="up_forward")
     parser.add_argument("--final-pose", nargs=3, type=float, default=(0.50, 0.0, 0.55), metavar=("X", "Y", "Z"))
-    parser.add_argument("--slot-spacing", type=float, default=0.45)
+    parser.add_argument("--slot-spacing", type=float, default=0.49)
     parser.add_argument("--min-separation", type=float, default=0.10)
     parser.add_argument(
         "--no-fly-zone",

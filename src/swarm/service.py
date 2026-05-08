@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 from dataclasses import replace
 
 import httpx
@@ -25,9 +26,11 @@ class SwarmDeployService:
     def __init__(self, runner: SwarmSessionRunner | None = None):
         self.runner = runner or SwarmSessionRunner()
         self._lock = asyncio.Lock()
+        self._telemetry_lock = threading.Lock()
         self._active_mission_id: str | None = None
         self._active_task: asyncio.Task | None = None
         self._missions: dict[str, DeployResult] = {}
+        self._telemetry: dict[str, dict[str, dict]] = {}
 
     async def deploy(self, spec: MissionSpec) -> DeployResult:
         if self._active_mission_id is not None:
@@ -63,14 +66,20 @@ class SwarmDeployService:
                 return result
 
             self._active_mission_id = prepared.mission_id
-            running = replace(prepared, state=MissionState.RUNNING, message="running")
-            self._missions[running.mission_id] = running
-            await self._publish(running)
+            preparing = replace(prepared, state=MissionState.ACCEPTED, message="preparing")
+            self._missions[preparing.mission_id] = preparing
+            await self._publish(preparing)
             self._active_task = asyncio.create_task(self._run_background(prepared, spec))
-            return running
+            return preparing
 
     async def get_status(self, mission_id: str) -> DeployResult | None:
         return self._missions.get(mission_id)
+
+    def result_payload(self, result: DeployResult) -> dict:
+        data = result.to_dict()
+        data["telemetry"] = self._telemetry_snapshot(result.mission_id)
+        data.update(self._infra_payload(result))
+        return data
 
     def current_status(self) -> dict:
         """Read-only snapshot of the active mission, if any."""
@@ -86,6 +95,11 @@ class SwarmDeployService:
             "selected": [health.uri for health in current.selection.selected],
             "message": current.message,
         }
+
+    def battery_telemetry(self, mission_id: str) -> dict[str, dict] | None:
+        if mission_id not in self._missions:
+            return None
+        return self._telemetry_snapshot(mission_id)
 
     async def abort(self) -> DeployResult | None:
         mission_id = self._active_mission_id
@@ -113,7 +127,11 @@ class SwarmDeployService:
 
     async def _run_background(self, prepared: DeployResult, spec: MissionSpec) -> None:
         try:
-            result = await self.runner.execute_prepared(prepared, spec)
+            result = await self.runner.execute_prepared(
+                prepared,
+                spec,
+                telemetry_callback=lambda uri, sample: self._record_battery_sample(prepared.mission_id, uri, sample),
+            )
         except Exception as exc:
             result = replace(prepared, state=MissionState.FAILED, message=str(exc))
         self._missions[result.mission_id] = result
@@ -151,9 +169,7 @@ class SwarmDeployService:
 
         selected = [health.uri for health in result.selection.selected]
         payload = {
-            "success": True,
-            "swarm_success": result.state in {MissionState.COMPLETED, MissionState.DRY_RUN},
-            "swarm_safe_to_fly": result.plan is not None and len(selected) >= result.selection.required_size,
+            **self._infra_payload(result),
             "mission_id": result.mission_id,
             "state": result.state.value,
             "message": result.message,
@@ -166,6 +182,38 @@ class SwarmDeployService:
                 response.raise_for_status()
         except Exception as exc:
             logger.warning("swarm callback skipped: %s", exc)
+
+    def _record_battery_sample(self, mission_id: str, uri: str, sample: dict) -> None:
+        with self._telemetry_lock:
+            self._telemetry.setdefault(mission_id, {})[uri] = sample
+
+    def _telemetry_snapshot(self, mission_id: str) -> dict[str, dict]:
+        with self._telemetry_lock:
+            return dict(self._telemetry.get(mission_id, {}))
+
+    def _infra_payload(self, result: DeployResult) -> dict:
+        """Bridge-facing status flags for DTW's polling demo workflow.
+
+        `infra_continue` means DTW can advance its mock scenario timeline. It
+        is intentionally separate from `swarm_success`: unsafe/refused physical
+        flight should not block the infrastructure demo.
+        """
+
+        selected_count = len(result.selection.selected)
+        terminal = result.state in {
+            MissionState.COMPLETED,
+            MissionState.DRY_RUN,
+            MissionState.REFUSED,
+            MissionState.FAILED,
+            MissionState.ABORTED,
+        }
+        return {
+            "success": True,
+            "infra_status": "in_flight" if result.state == MissionState.RUNNING else "success" if terminal else "pending",
+            "infra_continue": terminal,
+            "swarm_success": result.state in {MissionState.COMPLETED, MissionState.DRY_RUN},
+            "swarm_safe_to_fly": result.plan is not None and selected_count >= result.selection.required_size,
+        }
 
 
 _deploy_service: SwarmDeployService | None = None
