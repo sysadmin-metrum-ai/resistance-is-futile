@@ -1,8 +1,8 @@
 """Copy Lighthouse config from one Crazyflie to scanned Crazyflies.
 
 Usage:
-    uv run python scripts/write-lighthouse-config-to-scan.py --yes
-    uv run python scripts/write-lighthouse-config-to-scan.py --source-uri radio://0/80/2M/E7E7E7E702 --target-uri radio://0/80/2M/E7E7E7E701 --no-scan --yes
+    uv run python scripts/write-lighthouse-config-to-scan.py --scan --yes
+    uv run python scripts/write-lighthouse-config-to-scan.py --source-uri radio://0/80/2M/E7E7E7E706 --target-uri radio://0/80/2M/E7E7E7E701 --yes
 
 This follows the Bitcraze documented flow:
 read with LighthouseMemHelper, write and persist with LighthouseConfigWriter.write_and_store_config().
@@ -17,9 +17,6 @@ from cflib.crazyflie import Crazyflie
 from cflib.crazyflie.mem import LighthouseMemHelper
 from cflib.crazyflie.syncCrazyflie import SyncCrazyflie
 from cflib.localization.lighthouse_config_manager import LighthouseConfigWriter
-
-
-DEFAULT_SOURCE_URI = "radio://0/80/2M/E7E7E7E702"
 
 
 def status(message: str) -> None:
@@ -126,9 +123,10 @@ def write_lighthouse_config(
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Write source Lighthouse config to scanned Crazyflies")
-    parser.add_argument("--source-uri", default=DEFAULT_SOURCE_URI)
+    parser.add_argument("--source-uri", required=True)
     parser.add_argument("--target-uri", action="append", default=[], help="Explicit target URI; repeatable")
-    parser.add_argument("--no-scan", action="store_true", help="Only use explicit --target-uri values")
+    parser.add_argument("--scan", action="store_true", help="Also include scanned Crazyflies")
+    parser.add_argument("--no-scan", dest="scan", action="store_false", help=argparse.SUPPRESS)
     parser.add_argument("--include-source", action="store_true", help="Allow writing back to the source URI")
     parser.add_argument("--system-type", type=int, default=2, choices=[1, 2], help="Lighthouse system type")
     parser.add_argument("--base-station-count", type=int, default=None, help="Default: infer from source config")
@@ -142,7 +140,7 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         cflib.crtp.init_drivers()
-        scanned = [] if args.no_scan else scan_uris()
+        scanned = scan_uris() if args.scan else []
         targets = target_uris(scanned, args.target_uri, args.source_uri, args.include_source)
 
         status(f"Source: {args.source_uri}")

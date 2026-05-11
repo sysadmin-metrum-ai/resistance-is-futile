@@ -31,19 +31,10 @@ export function DashboardLayout({ children, title = 'Drone Swarm Control' }: Das
           {/* Navigation */}
           <nav className="flex items-center gap-2">
             <Button variant="ghost" asChild>
-              <Link href="/">Dashboard</Link>
+              <Link href="/simulator">Simulator</Link>
             </Button>
             <Button variant="ghost" asChild>
-              <Link href="/drones">Drones</Link>
-            </Button>
-            <Button variant="ghost" asChild>
-              <Link href="/missions">Missions</Link>
-            </Button>
-            <Button variant="ghost" asChild>
-              <Link href="/fleets">Fleets</Link>
-            </Button>
-            <Button variant="ghost" asChild>
-              <Link href="/anchors">Anchors</Link>
+              <Link href="/battery">Battery</Link>
             </Button>
           </nav>
         </div>
@@ -58,7 +49,7 @@ export function DashboardLayout({ children, title = 'Drone Swarm Control' }: Das
       <footer className="border-t bg-card">
         <div className="container mx-auto px-4 py-4">
           <p className="text-sm text-muted-foreground text-center">
-            Drone Swarm Control Panel
+            Demo Floor Control
           </p>
         </div>
       </footer>

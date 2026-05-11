@@ -14,6 +14,9 @@ import type {
   MissionResponse,
   MissionDetailResponse,
   CancelResponse,
+  SwarmDeployStatus,
+  SwarmBatteryTelemetryResponse,
+  SwarmCurrentStatus,
   KillSwitchResponse,
   HealthCheckResponse,
   BulkHealthCheckResponse,
@@ -161,6 +164,30 @@ export async function getMissions(): Promise<MissionDetailResponse[]> {
  */
 export async function cancelMission(missionId: string): Promise<CancelResponse> {
   const response = await apiClient.post<CancelResponse>(`/missions/${missionId}/cancel`);
+  return response.data;
+}
+
+/**
+ * Get the active swarm mission id and selected drone URIs.
+ */
+export async function getSwarmStatus(): Promise<SwarmCurrentStatus> {
+  const response = await apiClient.get<SwarmCurrentStatus>('/swarm/status');
+  return response.data;
+}
+
+/**
+ * Get only the 1Hz in-flight battery samples for a swarm mission.
+ */
+export async function getSwarmBatteryTelemetry(missionId: string): Promise<SwarmBatteryTelemetryResponse> {
+  const response = await apiClient.get<SwarmBatteryTelemetryResponse>(`/swarm/deploy/${missionId}/battery`);
+  return response.data;
+}
+
+/**
+ * Get the intended swarm plan for simulation. This is server plan data, not drone pose telemetry.
+ */
+export async function getSwarmDeployStatus(missionId: string): Promise<SwarmDeployStatus> {
+  const response = await apiClient.get<SwarmDeployStatus>(`/swarm/deploy/${missionId}`);
   return response.data;
 }
 

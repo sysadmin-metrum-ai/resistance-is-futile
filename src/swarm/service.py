@@ -6,12 +6,15 @@ import asyncio
 import logging
 import threading
 from dataclasses import replace
+from datetime import datetime
+from datetime import timezone
 
 import httpx
 
 from src.services.event_broadcaster import get_broadcaster
 from src.swarm.models import MissionSpec
 from src.swarm.models import MissionState
+from src.swarm.executor import PreparedExecution
 from src.swarm.session import DeployResult
 from src.swarm.session import SwarmSessionRunner
 
@@ -31,6 +34,11 @@ class SwarmDeployService:
         self._active_task: asyncio.Task | None = None
         self._missions: dict[str, DeployResult] = {}
         self._telemetry: dict[str, dict[str, dict]] = {}
+        self._phase_lock = threading.Lock()
+        self._phases: dict[str, dict] = {}
+        self._prepared_executions: dict[str, PreparedExecution] = {}
+        self._prepared_specs: dict[str, MissionSpec] = {}
+        self._prepared_results: dict[str, DeployResult] = {}
 
     async def deploy(self, spec: MissionSpec) -> DeployResult:
         if self._active_mission_id is not None:
@@ -68,9 +76,71 @@ class SwarmDeployService:
             self._active_mission_id = prepared.mission_id
             preparing = replace(prepared, state=MissionState.ACCEPTED, message="preparing")
             self._missions[preparing.mission_id] = preparing
+            self._set_phase(preparing.mission_id, "preflight", {"source": "deploy"})
             await self._publish(preparing)
             self._active_task = asyncio.create_task(self._run_background(prepared, spec))
             return preparing
+
+    async def prepare_for_launch(self, spec: MissionSpec) -> DeployResult:
+        if self._active_mission_id is not None:
+            raise RuntimeError(f"swarm mission already active: {self._active_mission_id}")
+
+        async with self._lock:
+            if self._active_mission_id is not None:
+                raise RuntimeError(f"swarm mission already active: {self._active_mission_id}")
+
+            prepared = await self.runner.prepare(spec)
+            if prepared.state == MissionState.REFUSED or prepared.plan is None:
+                self._missions[prepared.mission_id] = prepared
+                self._set_phase(
+                    prepared.mission_id,
+                    "health_failed",
+                    {"message": prepared.message, "selection": prepared.selection.to_dict()},
+                )
+                await self._publish_and_callback(prepared, spec)
+                return prepared
+
+            if not spec.arm:
+                result = replace(prepared, state=MissionState.REFUSED, message="arm_required")
+                self._missions[result.mission_id] = result
+                self._set_phase(
+                    result.mission_id,
+                    "health_failed",
+                    {"message": result.message, "selection": result.selection.to_dict()},
+                )
+                await self._publish_and_callback(result, spec)
+                return result
+
+            self._active_mission_id = prepared.mission_id
+            preparing = replace(prepared, state=MissionState.ACCEPTED, message="preflight")
+            self._missions[preparing.mission_id] = preparing
+            self._prepared_specs[preparing.mission_id] = spec
+            self._prepared_results[preparing.mission_id] = prepared
+            self._set_phase(
+                preparing.mission_id,
+                "preflight",
+                {"source": "health_selection", "selection": prepared.selection.to_dict()},
+            )
+            await self._publish(preparing)
+            self._active_task = asyncio.create_task(self._prepare_background(prepared, spec))
+            return preparing
+
+    async def launch_prepared(self, mission_id: str) -> DeployResult:
+        prepared_execution = self._prepared_executions.get(mission_id)
+        prepared_result = self._prepared_results.get(mission_id)
+        spec = self._prepared_specs.get(mission_id)
+        if prepared_execution is None or prepared_result is None or spec is None:
+            raise RuntimeError("swarm mission is not ready to deploy")
+
+        current_phase = self._phase_snapshot(mission_id).get("phase")
+        if current_phase != "ready_to_deploy":
+            raise RuntimeError(f"swarm mission is not ready to deploy: {current_phase}")
+
+        running = replace(prepared_result, state=MissionState.RUNNING, message="running")
+        self._missions[mission_id] = running
+        await self._publish(running)
+        self._active_task = asyncio.create_task(self._launch_background(prepared_result, prepared_execution, spec))
+        return running
 
     async def get_status(self, mission_id: str) -> DeployResult | None:
         return self._missions.get(mission_id)
@@ -78,6 +148,7 @@ class SwarmDeployService:
     def result_payload(self, result: DeployResult) -> dict:
         data = result.to_dict()
         data["telemetry"] = self._telemetry_snapshot(result.mission_id)
+        data.update(self._phase_snapshot(result.mission_id))
         data.update(self._infra_payload(result))
         return data
 
@@ -127,14 +198,69 @@ class SwarmDeployService:
 
     async def _run_background(self, prepared: DeployResult, spec: MissionSpec) -> None:
         try:
+            running = replace(prepared, state=MissionState.RUNNING, message="running")
+            self._missions[running.mission_id] = running
+            await self._publish(running)
             result = await self.runner.execute_prepared(
                 prepared,
                 spec,
                 telemetry_callback=lambda uri, sample: self._record_battery_sample(prepared.mission_id, uri, sample),
+                phase_callback=lambda phase, details=None: self._set_phase(prepared.mission_id, phase, details),
             )
         except Exception as exc:
             result = replace(prepared, state=MissionState.FAILED, message=str(exc))
+            self._set_phase(prepared.mission_id, "failed", {"message": str(exc)})
         self._missions[result.mission_id] = result
+        if self._active_mission_id == result.mission_id:
+            self._active_mission_id = None
+            self._active_task = None
+        await self._publish_and_callback(result, spec)
+
+    async def _prepare_background(self, prepared: DeployResult, spec: MissionSpec) -> None:
+        try:
+            execution = await self.runner.prepare_execution(
+                prepared,
+                phase_callback=lambda phase, details=None: self._set_phase(prepared.mission_id, phase, details),
+            )
+            self._prepared_executions[prepared.mission_id] = execution
+            ready = replace(prepared, state=MissionState.ACCEPTED, message="ready_to_deploy")
+            self._missions[prepared.mission_id] = ready
+            self._set_phase(
+                prepared.mission_id,
+                "ready_to_deploy",
+                {"selected": [drone.uri for drone in execution.plan.drones], "launch_ready": True},
+            )
+            await self._publish(ready)
+        except Exception as exc:
+            result = replace(prepared, state=MissionState.FAILED, message=str(exc))
+            self._missions[result.mission_id] = result
+            self._set_phase(result.mission_id, "failed", {"message": str(exc)})
+            if self._active_mission_id == result.mission_id:
+                self._active_mission_id = None
+                self._active_task = None
+            await self._publish_and_callback(result, spec)
+
+    async def _launch_background(
+        self,
+        prepared: DeployResult,
+        execution: PreparedExecution,
+        spec: MissionSpec,
+    ) -> None:
+        try:
+            result = await self.runner.launch_prepared(
+                prepared,
+                execution,
+                telemetry_callback=lambda uri, sample: self._record_battery_sample(prepared.mission_id, uri, sample),
+                phase_callback=lambda phase, details=None: self._set_phase(prepared.mission_id, phase, details),
+            )
+        except Exception as exc:
+            result = replace(prepared, state=MissionState.FAILED, message=str(exc))
+            self._set_phase(prepared.mission_id, "failed", {"message": str(exc)})
+        self._missions[result.mission_id] = result
+        self._set_phase(result.mission_id, "completed" if result.state == MissionState.COMPLETED else "failed")
+        self._prepared_executions.pop(result.mission_id, None)
+        self._prepared_specs.pop(result.mission_id, None)
+        self._prepared_results.pop(result.mission_id, None)
         if self._active_mission_id == result.mission_id:
             self._active_mission_id = None
             self._active_task = None
@@ -186,6 +312,29 @@ class SwarmDeployService:
     def _record_battery_sample(self, mission_id: str, uri: str, sample: dict) -> None:
         with self._telemetry_lock:
             self._telemetry.setdefault(mission_id, {})[uri] = sample
+
+    def _set_phase(self, mission_id: str, phase: str, details: dict | None = None) -> None:
+        now = datetime.now(timezone.utc).isoformat()
+        with self._phase_lock:
+            current = self._phases.get(mission_id, {})
+            history = list(current.get("phase_history", []))
+            if current.get("phase") != phase:
+                history.append({"phase": phase, "started_at": now, "details": details or {}})
+                phase_started_at = now
+            else:
+                phase_started_at = current.get("phase_started_at", now)
+            self._phases[mission_id] = {
+                "phase": phase,
+                "phase_started_at": phase_started_at,
+                "phase_updated_at": now,
+                "phase_details": details or current.get("phase_details", {}),
+                "phase_history": history,
+            }
+        logger.info("swarm phase: mission=%s phase=%s details=%s", mission_id, phase, details or {})
+
+    def _phase_snapshot(self, mission_id: str) -> dict:
+        with self._phase_lock:
+            return dict(self._phases.get(mission_id, {}))
 
     def _telemetry_snapshot(self, mission_id: str) -> dict[str, dict]:
         with self._telemetry_lock:

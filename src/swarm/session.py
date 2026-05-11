@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from dataclasses import replace
 
 from src.swarm.executor import SwarmExecutor
+from src.swarm.executor import PhaseCallback
+from src.swarm.executor import PreparedExecution
 from src.swarm.health import CflibHealthProbe
 from src.swarm.health import HealthProbe
 from src.swarm.health import check_candidates_concurrently
@@ -22,6 +24,7 @@ from src.swarm.models import MissionState
 from src.swarm.models import SwarmSelection
 from src.swarm.planner import SwarmPlan
 from src.swarm.planner import build_swarm_plan
+from src.swarm.planner import load_no_fly_zones
 from src.swarm.pose import launch_poses_from_health
 from src.swarm.roster import candidates_for_spec
 from src.swarm.roster import select_healthiest_swarm
@@ -106,6 +109,8 @@ class SwarmSessionRunner:
             thresholds=thresholds,
         )
         health = [_reject_missing_pose(item) for item in health]
+        # TODO: Re-enable for demos with physical no-fly zones around the server.
+        # health = _reject_no_fly_zone_launches(health, spec)
         minimum_size = minimum_viable_swarm_size(spec.swarm_size)
         selection = select_healthiest_swarm(health, spec.swarm_size, minimum_size=minimum_size)
         if not selection.ready:
@@ -124,6 +129,7 @@ class SwarmSessionRunner:
         prepared: DeployResult,
         spec: MissionSpec,
         telemetry_callback: BatteryTelemetryCallback | None = None,
+        phase_callback: PhaseCallback | None = None,
     ) -> DeployResult:
         if prepared.plan is None:
             return prepared
@@ -131,7 +137,36 @@ class SwarmSessionRunner:
         kwargs = {"arm": True}
         if "telemetry_callback" in inspect.signature(execute).parameters:
             kwargs["telemetry_callback"] = telemetry_callback
+        if "phase_callback" in inspect.signature(execute).parameters:
+            kwargs["phase_callback"] = phase_callback
         result = await asyncio.to_thread(execute, prepared.plan, **kwargs)
+        return self.completed_result(prepared, result)
+
+    async def prepare_execution(
+        self,
+        prepared: DeployResult,
+        phase_callback: PhaseCallback | None = None,
+    ) -> PreparedExecution:
+        if prepared.plan is None:
+            raise ValueError("prepared result has no plan")
+        return await asyncio.to_thread(self.executor.prepare, prepared.plan, phase_callback=phase_callback)
+
+    async def launch_prepared(
+        self,
+        prepared: DeployResult,
+        execution: PreparedExecution,
+        telemetry_callback: BatteryTelemetryCallback | None = None,
+        phase_callback: PhaseCallback | None = None,
+    ) -> DeployResult:
+        result = await asyncio.to_thread(
+            self.executor.launch,
+            execution,
+            telemetry_callback=telemetry_callback,
+            phase_callback=phase_callback,
+        )
+        return self.completed_result(prepared, result)
+
+    def completed_result(self, prepared: DeployResult, result) -> DeployResult:
         selection = _selection_for_plan(prepared.selection, result.plan)
         return DeployResult(
             prepared.mission_id,
@@ -180,6 +215,34 @@ def _reject_missing_pose(health: DroneHealth) -> DroneHealth:
     if not health.ready or health.pose is not None:
         return health
     return replace(health, ready=False, reasons=(*health.reasons, "missing_pose"))
+
+
+def _reject_no_fly_zone_launches(health: list[DroneHealth], spec: MissionSpec) -> list[DroneHealth]:
+    try:
+        zones = load_no_fly_zones(spec.no_fly_zone_paths)
+    except ValueError:
+        return health
+    if not zones:
+        return health
+
+    rejected: list[DroneHealth] = []
+    for item in health:
+        if not item.ready or item.pose is None:
+            rejected.append(item)
+            continue
+        zone = next((zone for zone in zones if zone.contains(item.pose)), None)
+        if zone is None:
+            rejected.append(item)
+            continue
+        rejected.append(
+            replace(
+                item,
+                ready=False,
+                score=0.0,
+                reasons=(*item.reasons, f"launch_pose_in_no_fly_zone:{zone.name}"),
+            )
+        )
+    return rejected
 
 
 def _selection_for_plan(selection: SwarmSelection, plan: SwarmPlan) -> SwarmSelection:

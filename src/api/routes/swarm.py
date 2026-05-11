@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from datetime import datetime
 from datetime import timezone
 from typing import Literal
 from uuid import uuid4
 
 import httpx
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 from pydantic import BaseModel, Field
 
 from src.core.config import get_settings
@@ -26,13 +27,15 @@ from src.swarm.service import get_swarm_deploy_service
 router = APIRouter()
 dtw_router = APIRouter()
 _DRONE_ESTIMATED_DURATION_SECONDS = 30
+_EMERGENCY_LAND_URIS = tuple(f"radio://0/80/2M/E7E7E7E7{index:02d}" for index in range(10))
 _dtw_sequences: dict[str, dict] = {}
+DronePhase = Literal["preflight", "health_failed", "ready_to_deploy", "taking_off", "returning", "completed", "failed"]
 
 
 class SwarmDeployRequest(BaseModel):
     """One deploy-style request for a full 3-5 drone swarm mission."""
 
-    swarm_size: int = Field(MIN_SWARM_SIZE, ge=MIN_SWARM_SIZE, le=MAX_SWARM_SIZE)
+    swarm_size: int = Field(MAX_SWARM_SIZE, ge=MIN_SWARM_SIZE, le=MAX_SWARM_SIZE)
     formation: Literal["line", "triangle", "diamond", "v"] = "triangle"
     pattern: Literal["line_shift", "square", "hold", "up_forward"] = "up_forward"
     final_pose: tuple[float, float, float] = (0.50, 0.0, 0.55)
@@ -84,6 +87,11 @@ class SwarmDeployResponse(BaseModel):
     events: list[str] = []
     telemetry: dict[str, dict] = Field(default_factory=dict)
     message: str
+    phase: str | None = None
+    phase_started_at: str | None = None
+    phase_updated_at: str | None = None
+    phase_details: dict = Field(default_factory=dict)
+    phase_history: list[dict] = Field(default_factory=list)
 
 
 class SwarmHealthRequest(BaseModel):
@@ -105,17 +113,42 @@ class SwarmBatteryTelemetryResponse(BaseModel):
     telemetry: dict[str, dict]
 
 
+class EmergencyLandRequest(BaseModel):
+    target_uris: tuple[str, ...] = Field(default_factory=lambda: _EMERGENCY_LAND_URIS)
+    land_duration_s: float = Field(2.0, gt=0)
+    stop_delay_s: float = Field(2.5, ge=0)
+
+
+class EmergencyLandTargetResponse(BaseModel):
+    uri: str
+    status: Literal["landed", "failed"]
+    error: str | None = None
+
+
+class EmergencyLandResponse(BaseModel):
+    status: Literal["emergency_land_sent"]
+    active_stopped: list[str]
+    results: list[EmergencyLandTargetResponse]
+
+
 class DroneTriggerResponse(BaseModel):
     sequence_id: str
     status: str = "dispatched"
+    phase: DronePhase = "preflight"
     estimated_duration_seconds: int
 
 
 class DroneStatusResponse(BaseModel):
     sequence_id: str
     status: Literal["dispatched", "in_progress", "completed", "failed"]
-    current_stage: Literal["flying_to_target", "inspecting", "returning", "docked"]
+    current_stage: DronePhase
+    phase: DronePhase
     elapsed_seconds: int
+    phase_started_at: str | None = None
+    phase_updated_at: str | None = None
+    phase_details: dict = Field(default_factory=dict)
+    phase_history: list[dict] = Field(default_factory=list)
+    health_failure_details: dict | None = None
 
 
 class DroneResultResponse(BaseModel):
@@ -227,53 +260,88 @@ async def abort_swarm(
     return _response_from_result(service.result_payload(result))
 
 
-@dtw_router.post("/drone/trigger", response_model=DroneTriggerResponse)
-async def trigger_drone(
-    request: Request,
+@router.post("/emergency-land", response_model=EmergencyLandResponse)
+async def emergency_land_swarm(
+    request: EmergencyLandRequest = EmergencyLandRequest(),
+    service: SwarmDeployService = Depends(get_service),
     x_api_key: str = Header(None, alias="X-API-Key"),
 ):
-    """DTW-compatible wrapper that asynchronously forwards to the deploy API."""
+    """Force land known drones, even if API mission state was lost."""
+    verify_api_key(x_api_key)
+    active_stopped = await asyncio.to_thread(_emergency_stop_active_connections, service)
+    results = await asyncio.to_thread(
+        _emergency_land_uris,
+        request.target_uris,
+        request.land_duration_s,
+        request.stop_delay_s,
+    )
+    asyncio.create_task(service.abort())
+    return EmergencyLandResponse(status="emergency_land_sent", active_stopped=active_stopped, results=results)
+
+
+@dtw_router.post("/drone/trigger", response_model=DroneTriggerResponse)
+async def trigger_drone(
+    service: SwarmDeployService = Depends(get_service),
+    x_api_key: str = Header(None, alias="X-API-Key"),
+):
+    """DTW-compatible wrapper that starts preflight without taking off."""
     verify_api_key(x_api_key)
     sequence_id = f"SEQ-{uuid4().hex[:8].upper()}"
-    base_url = str(request.base_url).rstrip("/")
-    headers = _forward_headers(x_api_key)
     _dtw_sequences[sequence_id] = {
         "swarm_mission_id": None,
         "state": "accepted",
-        "message": "dispatched",
+        "phase": "preflight",
+        "message": "preflight",
         "started_at": datetime.now(timezone.utc),
     }
-    asyncio.create_task(_run_dtw_sequence(sequence_id, base_url, headers))
+    asyncio.create_task(_run_dtw_sequence(sequence_id, service))
     return DroneTriggerResponse(
         sequence_id=sequence_id,
+        phase="preflight",
         estimated_duration_seconds=_DRONE_ESTIMATED_DURATION_SECONDS,
     )
+
+
+@dtw_router.post("/drone/launch/{sequence_id}", response_model=DroneStatusResponse)
+async def launch_drone(
+    sequence_id: str,
+    service: SwarmDeployService = Depends(get_service),
+    x_api_key: str = Header(None, alias="X-API-Key"),
+):
+    verify_api_key(x_api_key)
+    sequence = _dtw_sequences.get(sequence_id)
+    if sequence is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="drone sequence not found")
+    mission_id = sequence.get("swarm_mission_id")
+    if not mission_id:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="drone sequence is still in preflight")
+    try:
+        await service.launch_prepared(mission_id)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+    payload = await _dtw_sequence_payload(sequence_id, service)
+    return _drone_status_response(sequence_id, payload)
 
 
 @dtw_router.get("/drone/status/{sequence_id}", response_model=DroneStatusResponse)
 async def get_drone_status(
     sequence_id: str,
-    request: Request,
+    service: SwarmDeployService = Depends(get_service),
     x_api_key: str = Header(None, alias="X-API-Key"),
 ):
     verify_api_key(x_api_key)
-    result = await _dtw_sequence_status(sequence_id, str(request.base_url).rstrip("/"), _forward_headers(x_api_key))
-    return DroneStatusResponse(
-        sequence_id=sequence_id,
-        status=_drone_status(result),
-        current_stage=_drone_stage(result),
-        elapsed_seconds=0,
-    )
+    payload = await _dtw_sequence_payload(sequence_id, service)
+    return _drone_status_response(sequence_id, payload)
 
 
 @dtw_router.get("/drone/result/{sequence_id}", response_model=DroneResultResponse)
 async def get_drone_result(
     sequence_id: str,
-    request: Request,
+    service: SwarmDeployService = Depends(get_service),
     x_api_key: str = Header(None, alias="X-API-Key"),
 ):
     verify_api_key(x_api_key)
-    result = await _dtw_sequence_status(sequence_id, str(request.base_url).rstrip("/"), _forward_headers(x_api_key))
+    result = await _dtw_sequence_result(sequence_id, service)
     return DroneResultResponse(
         sequence_id=sequence_id,
         status=_confirmation_status(result),
@@ -285,36 +353,35 @@ async def get_drone_result(
     )
 
 
-async def _run_dtw_sequence(sequence_id: str, base_url: str, headers: dict[str, str]) -> None:
+async def _run_dtw_sequence(sequence_id: str, service: SwarmDeployService) -> None:
     try:
-        result = await _post_swarm_deploy(base_url, headers, SwarmDeployRequest(dry_run=False, arm=True))
+        result = await service.prepare_for_launch(SwarmDeployRequest(dry_run=False, arm=True, health_timeout_s=25.0, max_concurrent_checks=3).to_spec())
         _dtw_sequences[sequence_id].update(
             swarm_mission_id=result.mission_id,
             state=result.state,
             message=result.message,
         )
     except Exception as exc:
-        _dtw_sequences[sequence_id].update(state="failed", message=str(exc))
+        _dtw_sequences[sequence_id].update(state="failed", phase="failed", message=str(exc))
 
 
-async def _dtw_sequence_status(
-    sequence_id: str,
-    base_url: str,
-    headers: dict[str, str],
-) -> SwarmDeployResponse:
+async def _dtw_sequence_result(sequence_id: str, service: SwarmDeployService) -> SwarmDeployResponse:
     sequence = _dtw_sequences.get(sequence_id)
     if sequence is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="drone sequence not found")
 
     mission_id = sequence.get("swarm_mission_id")
     if mission_id:
-        try:
-            return await _get_swarm_deploy_status(base_url, headers, mission_id)
-        except HTTPException as exc:
-            if exc.status_code != status.HTTP_404_NOT_FOUND:
-                raise
+        result = await service.get_status(mission_id)
+        if result is not None:
+            return _response_from_result(service.result_payload(result))
 
     return _dtw_pending_response(sequence_id, sequence)
+
+
+async def _dtw_sequence_payload(sequence_id: str, service: SwarmDeployService) -> dict:
+    result = await _dtw_sequence_result(sequence_id, service)
+    return result.model_dump()
 
 
 async def _post_swarm_deploy(base_url: str, headers: dict[str, str], request: SwarmDeployRequest) -> SwarmDeployResponse:
@@ -337,7 +404,43 @@ def _forward_headers(x_api_key: str | None) -> dict[str, str]:
     return {"X-API-Key": x_api_key} if x_api_key else {}
 
 
+def _emergency_stop_active_connections(service: SwarmDeployService) -> list[str]:
+    executor = getattr(getattr(service, "runner", None), "executor", None)
+    stop_active = getattr(executor, "emergency_stop_active", None)
+    if not callable(stop_active):
+        return []
+    return list(stop_active())
+
+
+def _emergency_land_uris(target_uris: tuple[str, ...], land_duration_s: float, stop_delay_s: float) -> list[dict]:
+    import cflib.crtp
+    from cflib.crazyflie import Crazyflie
+    from cflib.crazyflie.syncCrazyflie import SyncCrazyflie
+
+    cflib.crtp.init_drivers()
+    results: list[dict] = []
+    for uri in dict.fromkeys(target_uris):
+        try:
+            with SyncCrazyflie(uri, cf=Crazyflie(rw_cache="./cache")) as scf:
+                cf = scf.cf
+                try:
+                    cf.param.set_value("commander.enHighLevel", "1")
+                    time.sleep(0.1)
+                except Exception:
+                    pass
+                commander = cf.high_level_commander
+                commander.land(0.0, land_duration_s)
+                time.sleep(stop_delay_s)
+                commander.stop()
+            results.append({"uri": uri, "status": "landed", "error": None})
+        except Exception as exc:
+            results.append({"uri": uri, "status": "failed", "error": str(exc)})
+    return results
+
+
 def _dtw_pending_response(sequence_id: str, sequence: dict) -> SwarmDeployResponse:
+    phase = sequence.get("phase", "failed" if sequence["state"] == "failed" else "preflight")
+    now = datetime.now(timezone.utc).isoformat()
     return SwarmDeployResponse(
         mission_id=sequence_id,
         state=sequence["state"],
@@ -352,6 +455,11 @@ def _dtw_pending_response(sequence_id: str, sequence: dict) -> SwarmDeployRespon
         events=[],
         telemetry={},
         message=sequence["message"],
+        phase=phase,
+        phase_started_at=sequence.get("started_at", datetime.now(timezone.utc)).isoformat(),
+        phase_updated_at=now,
+        phase_details={"message": sequence["message"]},
+        phase_history=[{"phase": phase, "started_at": sequence.get("started_at", datetime.now(timezone.utc)).isoformat()}],
     )
 
 
@@ -371,23 +479,55 @@ def _response_from_result(data: dict) -> SwarmDeployResponse:
         events=data["events"],
         telemetry=data.get("telemetry", {}),
         message=data["message"],
+        phase=data.get("phase"),
+        phase_started_at=data.get("phase_started_at"),
+        phase_updated_at=data.get("phase_updated_at"),
+        phase_details=data.get("phase_details", {}),
+        phase_history=data.get("phase_history", []),
     )
 
 
-def _drone_status(result: SwarmDeployResponse) -> Literal["dispatched", "in_progress", "completed", "failed"]:
-    if result.state == "accepted":
-        return "dispatched"
-    if result.state == "running":
-        return "in_progress"
-    if result.state in {"completed", "dry_run"}:
+def _drone_status_from_payload(payload: dict) -> Literal["dispatched", "in_progress", "completed", "failed"]:
+    phase = payload.get("phase")
+    if phase == "completed" or payload.get("state") in {"completed", "dry_run"}:
         return "completed"
-    return "failed"
+    if phase in {"failed", "health_failed"} or payload.get("state") in {"failed", "refused", "aborted"}:
+        return "failed"
+    if phase in {"preflight", "ready_to_deploy"}:
+        return "dispatched"
+    return "in_progress"
 
 
-def _drone_stage(result: SwarmDeployResponse) -> Literal["flying_to_target", "inspecting", "returning", "docked"]:
-    if result.state in {"accepted", "running"}:
-        return "flying_to_target"
-    return "docked"
+def _drone_phase_from_payload(payload: dict) -> DronePhase:
+    phase = payload.get("phase")
+    if phase in {"preflight", "health_failed", "ready_to_deploy", "taking_off", "returning", "completed", "failed"}:
+        return phase
+    if payload.get("state") in {"completed", "dry_run"}:
+        return "completed"
+    if payload.get("state") in {"failed", "refused", "aborted"}:
+        return "failed"
+    return "preflight"
+
+
+def _drone_status_response(sequence_id: str, payload: dict) -> DroneStatusResponse:
+    sequence = _dtw_sequences.get(sequence_id, {})
+    started_at = sequence.get("started_at")
+    elapsed_seconds = (
+        int((datetime.now(timezone.utc) - started_at).total_seconds()) if isinstance(started_at, datetime) else 0
+    )
+    phase = _drone_phase_from_payload(payload)
+    return DroneStatusResponse(
+        sequence_id=sequence_id,
+        status=_drone_status_from_payload(payload),
+        current_stage=phase,
+        phase=phase,
+        elapsed_seconds=elapsed_seconds,
+        phase_started_at=payload.get("phase_started_at"),
+        phase_updated_at=payload.get("phase_updated_at"),
+        phase_details=payload.get("phase_details") or {},
+        phase_history=payload.get("phase_history") or [],
+        health_failure_details=(payload.get("phase_details") or {}) if phase == "health_failed" else None,
+    )
 
 
 def _confirmation_status(result: SwarmDeployResponse) -> Literal["confirmed", "unconfirmed", "error"]:

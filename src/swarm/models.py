@@ -37,7 +37,7 @@ class HealthThresholds:
     """Minimum health needed before a drone can be selected."""
 
     min_voltage: float = 3.75
-    min_battery_percent: int = 50
+    min_battery_percent: int = 25
     min_connection_quality: int = 70
     health_timeout_s: float = 25.0
     estimator_timeout_s: float = 5.0
@@ -107,7 +107,7 @@ class MissionSpec:
     without touching executor internals.
     """
 
-    swarm_size: int = MIN_SWARM_SIZE
+    swarm_size: int = MAX_SWARM_SIZE
     formation: Literal["line", "triangle", "diamond", "v"] = "triangle"
     pattern: Literal["line_shift", "square", "hold", "up_forward"] = "up_forward"
     final_pose: Vec3 = (0.50, 0.0, 0.55)

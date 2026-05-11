@@ -76,6 +76,80 @@ export interface CancelResponse {
 }
 
 // ============================================================================
+// Swarm Battery Types
+// ============================================================================
+
+export interface SwarmCurrentStatus {
+  state: string;
+  active_mission_id: string | null;
+  selected?: string[];
+  message?: string;
+}
+
+export interface SwarmBatterySample {
+  voltage: number | null;
+  battery_percent: number | null;
+  low_samples: number;
+  watchdog_landed: boolean;
+  sampled_at: number;
+}
+
+export interface SwarmBatteryTelemetryResponse {
+  mission_id: string;
+  telemetry: Record<string, SwarmBatterySample>;
+}
+
+export type Vec3 = [number, number, number];
+
+export interface SwarmDroneHealth {
+  uri: string;
+  ready: boolean;
+  score: number;
+  reasons: string[];
+  voltage: number | null;
+  battery_percent: number | null;
+  connection_quality: number | null;
+  battery_pass: boolean | null;
+  estimator_ready: boolean;
+  lighthouse_ready: boolean;
+  pose: Vec3 | null;
+  elapsed_s: number;
+}
+
+export interface SwarmPlanDrone {
+  uri: string;
+  launch: Vec3;
+  formation_slot: Vec3;
+  route_to_formation: Vec3[];
+  pattern_points: Vec3[];
+  route_to_return: Vec3[];
+  return_point: Vec3;
+}
+
+export interface SwarmPlan {
+  swarm_size: number;
+  assignment_cost: number;
+  formation: string;
+  pattern: string;
+  final_pose: Vec3;
+  min_separation_m: number;
+  collision_avoidance: boolean;
+  no_fly_zone_paths: string[];
+  drones: SwarmPlanDrone[];
+}
+
+export interface SwarmDeployStatus {
+  mission_id: string;
+  state: string;
+  selected: SwarmDroneHealth[];
+  rejected: SwarmDroneHealth[];
+  plan: SwarmPlan | null;
+  events: string[];
+  telemetry: Record<string, SwarmBatterySample>;
+  message: string;
+}
+
+// ============================================================================
 // Safety Types
 // ============================================================================
 

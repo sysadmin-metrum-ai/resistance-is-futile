@@ -275,8 +275,8 @@ async def check_candidates_concurrently(
     semaphore = asyncio.Semaphore(max(1, thresholds.max_concurrent_checks))
 
     async def check_one(candidate: DroneCandidate) -> DroneHealth:
-        started = time.monotonic()
         async with semaphore:
+            started = time.monotonic()
             try:
                 return await asyncio.wait_for(
                     asyncio.to_thread(probe.check, candidate, thresholds),
