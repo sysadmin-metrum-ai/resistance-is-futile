@@ -89,8 +89,13 @@ class SwarmDeployService:
             if self._active_mission_id is not None:
                 raise RuntimeError(f"swarm mission already active: {self._active_mission_id}")
 
-            prepared = await self.runner.prepare(spec)
+            self.runner.set_retain_health_connections(True)
+            try:
+                prepared = await self.runner.prepare(spec)
+            finally:
+                self.runner.set_retain_health_connections(False)
             if prepared.state == MissionState.REFUSED or prepared.plan is None:
+                self.runner.close_retained_health_connections()
                 self._missions[prepared.mission_id] = prepared
                 self._set_phase(
                     prepared.mission_id,
@@ -101,6 +106,7 @@ class SwarmDeployService:
                 return prepared
 
             if not spec.arm:
+                self.runner.close_retained_health_connections()
                 result = replace(prepared, state=MissionState.REFUSED, message="arm_required")
                 self._missions[result.mission_id] = result
                 self._set_phase(
@@ -112,6 +118,9 @@ class SwarmDeployService:
                 return result
 
             self._active_mission_id = prepared.mission_id
+            selected_uris = {health.uri for health in prepared.selection.selected}
+            retained_connections = self.runner.pop_retained_health_connections(selected_uris)
+            self.runner.close_retained_health_connections()
             preparing = replace(prepared, state=MissionState.ACCEPTED, message="preflight")
             self._missions[preparing.mission_id] = preparing
             self._prepared_specs[preparing.mission_id] = spec
@@ -122,7 +131,7 @@ class SwarmDeployService:
                 {"source": "health_selection", "selection": prepared.selection.to_dict()},
             )
             await self._publish(preparing)
-            self._active_task = asyncio.create_task(self._prepare_background(prepared, spec))
+            self._active_task = asyncio.create_task(self._prepare_background(prepared, spec, retained_connections))
             return preparing
 
     async def launch_prepared(self, mission_id: str) -> DeployResult:
@@ -216,11 +225,17 @@ class SwarmDeployService:
             self._active_task = None
         await self._publish_and_callback(result, spec)
 
-    async def _prepare_background(self, prepared: DeployResult, spec: MissionSpec) -> None:
+    async def _prepare_background(
+        self,
+        prepared: DeployResult,
+        spec: MissionSpec,
+        retained_connections: dict | None = None,
+    ) -> None:
         try:
             execution = await self.runner.prepare_execution(
                 prepared,
                 phase_callback=lambda phase, details=None: self._set_phase(prepared.mission_id, phase, details),
+                retained_connections=retained_connections,
             )
             self._prepared_executions[prepared.mission_id] = execution
             ready = replace(prepared, state=MissionState.ACCEPTED, message="ready_to_deploy")

@@ -146,10 +146,28 @@ class SwarmSessionRunner:
         self,
         prepared: DeployResult,
         phase_callback: PhaseCallback | None = None,
+        retained_connections: dict | None = None,
     ) -> PreparedExecution:
         if prepared.plan is None:
             raise ValueError("prepared result has no plan")
-        return await asyncio.to_thread(self.executor.prepare, prepared.plan, phase_callback=phase_callback)
+        prepare = self.executor.prepare
+        kwargs = {"phase_callback": phase_callback}
+        if "retained_connections" in inspect.signature(prepare).parameters:
+            kwargs["retained_connections"] = retained_connections
+        return await asyncio.to_thread(prepare, prepared.plan, **kwargs)
+
+    def set_retain_health_connections(self, retain: bool) -> None:
+        if hasattr(self.probe, "retain_connections"):
+            self.probe.retain_connections = retain  # type: ignore[attr-defined]
+
+    def pop_retained_health_connections(self, uris: set[str]) -> dict:
+        if not hasattr(self.probe, "pop_retained_connections"):
+            return {}
+        return self.probe.pop_retained_connections(uris)  # type: ignore[attr-defined]
+
+    def close_retained_health_connections(self) -> None:
+        if hasattr(self.probe, "close_retained_connections"):
+            self.probe.close_retained_connections()  # type: ignore[attr-defined]
 
     async def launch_prepared(
         self,
@@ -187,6 +205,8 @@ def _plan_to_dict(plan: SwarmPlan | None) -> dict | None:
         "formation": plan.spec.formation,
         "pattern": plan.spec.pattern,
         "final_pose": list(plan.spec.final_pose),
+        "captured_path": plan.spec.captured_path,
+        "yaw_rad": plan.spec.yaw_rad,
         "min_separation_m": plan.spec.min_separation_m,
         "collision_avoidance": plan.spec.enable_collision_avoidance,
         "no_fly_zone_paths": list(plan.spec.no_fly_zone_paths),

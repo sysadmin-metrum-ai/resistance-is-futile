@@ -14,6 +14,10 @@ from src.swarm.models import SwarmSelection
 
 DEFAULT_DISCOVERY_URI_PREFIX = "radio://0/80/2M/E7E7E7E7"
 DEFAULT_DISCOVERY_COUNT = 9
+DEFAULT_DISCOVERY_FLEET = (
+    *(f"radio://0/80/2M/E7E7E7E7{index:02d}" for index in range(0, 5)),
+    *(f"radio://1/90/2M/E7E7E7E7{index:02d}" for index in range(5, 10)),
+)
 
 
 def discover_candidates(allowed_uris: tuple[str, ...] = ()) -> list[DroneCandidate]:
@@ -21,6 +25,8 @@ def discover_candidates(allowed_uris: tuple[str, ...] = ()) -> list[DroneCandida
 
     if allowed_uris:
         return [DroneCandidate(uri=normalize_uri(uri)) for uri in allowed_uris]
+    if os.getenv("CRAZYFLIE_DISCOVERY_MODE", "configured").lower() != "scan":
+        return default_radio_candidates()
 
     try:
         import cflib.crtp
@@ -37,9 +43,20 @@ def discover_candidates(allowed_uris: tuple[str, ...] = ()) -> list[DroneCandida
 def default_radio_candidates() -> list[DroneCandidate]:
     """Fallback when Crazyradio scan misses known same-channel fleet URIs."""
 
+    uri_list = os.getenv("CRAZYFLIE_URI_LIST")
+    if uri_list:
+        return [DroneCandidate(uri=normalize_uri(uri)) for uri in _split_uri_list(uri_list)]
+
+    if "CRAZYFLIE_URI_PREFIX" not in os.environ and "CRAZYFLIE_URI_COUNT" not in os.environ:
+        return [DroneCandidate(uri=uri) for uri in DEFAULT_DISCOVERY_FLEET]
+
     prefix = os.getenv("CRAZYFLIE_URI_PREFIX", DEFAULT_DISCOVERY_URI_PREFIX)
     count = int(os.getenv("CRAZYFLIE_URI_COUNT", str(DEFAULT_DISCOVERY_COUNT)))
     return [DroneCandidate(uri=f"{prefix}{index:02d}") for index in range(1, count + 1)]
+
+
+def _split_uri_list(value: str) -> list[str]:
+    return [part for chunk in value.split(",") for part in chunk.split() if part]
 
 
 def filter_candidates(
