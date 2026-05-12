@@ -23,7 +23,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--api-key", default=None, help="Optional X-API-Key value")
     parser.add_argument("--swarm-size", type=int, default=5, choices=[3, 4, 5])
     parser.add_argument("--formation", choices=["line", "triangle", "diamond", "v"], default="triangle")
-    parser.add_argument("--pattern", choices=["line_shift", "square", "hold", "up_forward"], default="up_forward")
+    parser.add_argument("--pattern", choices=["line_shift", "square", "hold", "up_forward", "captured_path"], default="up_forward")
+    parser.add_argument("--captured-path", default=None, help="Path JSON from scripts/capture-demo-path.py")
+    parser.add_argument("--yaw-rad", type=float, default=0.0)
     parser.add_argument("--allow-uri", action="append", default=[], help="Candidate URI; repeatable")
     parser.add_argument("--deny-uri", action="append", default=[], help="Excluded URI; repeatable")
     parser.add_argument("--sleep-s", type=float, default=5.0, help="Pause between completed missions")
@@ -48,9 +50,12 @@ def deploy_payload(args: argparse.Namespace) -> dict[str, Any]:
         "swarm_size": args.swarm_size,
         "formation": args.formation,
         "pattern": args.pattern,
+        "yaw_rad": args.yaw_rad,
         "dry_run": not fly,
         "arm": fly,
     }
+    if args.captured_path:
+        payload["captured_path"] = args.captured_path
     if args.allow_uri:
         payload["allowed_uris"] = args.allow_uri
     if args.deny_uri:

@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 import time
 from dataclasses import replace
 from threading import Event
+from typing import Any
 from typing import Protocol
+from urllib.parse import urlparse
 
 from src.swarm.models import DroneCandidate
 from src.swarm.models import DroneHealth
@@ -30,6 +33,16 @@ def cache_dir_for_uri(uri: str) -> str:
 
     suffix = normalize_uri(uri).split("/")[-1] or "default"
     return f"./cache/{suffix}"
+
+
+def radio_scheduler_key(uri: str) -> str:
+    """Group probes by physical radio so each Crazyradio is used deliberately."""
+
+    normalized = normalize_uri(uri)
+    if not normalized.startswith("radio://"):
+        return "non-radio"
+    parsed = urlparse(normalized)
+    return f"radio://{parsed.netloc}" if parsed.netloc else "radio://0"
 
 
 def score_health(
@@ -102,6 +115,11 @@ def health_from_exception(uri: str, exc: BaseException, elapsed_s: float) -> Dro
 class CflibHealthProbe:
     """Read battery, link, Lighthouse, and estimator health from a Crazyflie."""
 
+    def __init__(self, *, retain_connections: bool = False):
+        self.retain_connections = retain_connections
+        self._retained_connections: dict[str, Any] = {}
+        self._retained_lock = threading.Lock()
+
     def check(self, candidate: DroneCandidate, thresholds: HealthThresholds) -> DroneHealth:
         started = time.monotonic()
         uri = normalize_uri(candidate.uri)
@@ -116,8 +134,10 @@ class CflibHealthProbe:
 
         cflib.crtp.init_drivers()
         link_quality: list[int] = []
+        scf = SyncCrazyflie(uri, cf=Crazyflie(rw_cache=cache_dir_for_uri(uri)))
 
-        with SyncCrazyflie(uri, cf=Crazyflie(rw_cache=cache_dir_for_uri(uri))) as scf:
+        try:
+            scf.open_link()
             cf = scf.cf
             if hasattr(cf, "link_quality_updated"):
                 cf.link_quality_updated.add_callback(lambda quality: link_quality.append(int(quality)))
@@ -129,32 +149,61 @@ class CflibHealthProbe:
             voltage, battery_percent, battery_pass = self._read_power(LogConfig, cf)
             pose = self._read_pose(LogConfig, cf)
             lighthouse_ready = pose is not None
-            estimator_ready = self._reset_and_wait_estimator(LogConfig, cf, thresholds.estimator_timeout_s)
+            # Full estimator reset/convergence is launch preparation work. It
+            # runs again on selected retained links before arming, so health
+            # selection only verifies that pose telemetry is present.
+            estimator_ready = lighthouse_ready
+            connection_quality = link_quality[-1] if link_quality else 100
+            ready, score, reasons = score_health(
+                voltage=voltage,
+                battery_percent=battery_percent,
+                connection_quality=connection_quality,
+                battery_pass=battery_pass,
+                estimator_ready=estimator_ready,
+                lighthouse_ready=lighthouse_ready,
+                thresholds=thresholds,
+            )
+            health = DroneHealth(
+                uri=uri,
+                ready=ready,
+                score=score,
+                reasons=reasons,
+                voltage=voltage,
+                battery_percent=battery_percent,
+                connection_quality=connection_quality,
+                battery_pass=battery_pass,
+                estimator_ready=estimator_ready,
+                lighthouse_ready=lighthouse_ready,
+                pose=pose,
+                elapsed_s=time.monotonic() - started,
+            )
+            if self.retain_connections:
+                with self._retained_lock:
+                    self._retained_connections[uri] = scf
+                scf = None
+            return health
+        finally:
+            if scf is not None:
+                scf.close_link()
 
-        connection_quality = link_quality[-1] if link_quality else 100
-        ready, score, reasons = score_health(
-            voltage=voltage,
-            battery_percent=battery_percent,
-            connection_quality=connection_quality,
-            battery_pass=battery_pass,
-            estimator_ready=estimator_ready,
-            lighthouse_ready=lighthouse_ready,
-            thresholds=thresholds,
-        )
-        return DroneHealth(
-            uri=uri,
-            ready=ready,
-            score=score,
-            reasons=reasons,
-            voltage=voltage,
-            battery_percent=battery_percent,
-            connection_quality=connection_quality,
-            battery_pass=battery_pass,
-            estimator_ready=estimator_ready,
-            lighthouse_ready=lighthouse_ready,
-            pose=pose,
-            elapsed_s=time.monotonic() - started,
-        )
+    def pop_retained_connections(self, uris: set[str]) -> dict[str, Any]:
+        normalized = {normalize_uri(uri) for uri in uris}
+        with self._retained_lock:
+            return {
+                uri: self._retained_connections.pop(uri)
+                for uri in list(self._retained_connections)
+                if uri in normalized
+            }
+
+    def close_retained_connections(self) -> None:
+        with self._retained_lock:
+            connections = list(self._retained_connections.values())
+            self._retained_connections.clear()
+        for scf in connections:
+            try:
+                scf.close_link()
+            except Exception:
+                pass
 
     def _read_power(self, log_cls, cf) -> tuple[float | None, int | None, bool | None]:
         voltages: list[float] = []
@@ -270,11 +319,14 @@ async def check_candidates_concurrently(
     probe: HealthProbe,
     thresholds: HealthThresholds,
 ) -> list[DroneHealth]:
-    """Run bounded concurrent health checks with independent timeouts."""
+    """Run bounded health checks per physical radio with independent timeouts."""
 
-    semaphore = asyncio.Semaphore(max(1, thresholds.max_concurrent_checks))
+    per_radio_limit = max(1, thresholds.max_concurrent_checks)
+    radio_keys = {radio_scheduler_key(candidate.uri) for candidate in candidates}
+    semaphores = {key: asyncio.Semaphore(per_radio_limit) for key in radio_keys}
 
     async def check_one(candidate: DroneCandidate) -> DroneHealth:
+        semaphore = semaphores[radio_scheduler_key(candidate.uri)]
         async with semaphore:
             started = time.monotonic()
             try:

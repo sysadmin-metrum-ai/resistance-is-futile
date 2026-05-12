@@ -6,6 +6,7 @@ import asyncio
 import time
 from datetime import datetime
 from datetime import timezone
+from pathlib import Path
 from typing import Literal
 from uuid import uuid4
 
@@ -21,13 +22,16 @@ from src.swarm.models import HealthThresholds
 from src.swarm.models import MAX_SWARM_SIZE
 from src.swarm.models import MIN_SWARM_SIZE
 from src.swarm.models import MissionSpec
+from src.swarm.roster import DEFAULT_DISCOVERY_FLEET
 from src.swarm.service import SwarmDeployService
 from src.swarm.service import get_swarm_deploy_service
 
 router = APIRouter()
 dtw_router = APIRouter()
 _DRONE_ESTIMATED_DURATION_SECONDS = 30
-_EMERGENCY_LAND_URIS = tuple(f"radio://0/80/2M/E7E7E7E7{index:02d}" for index in range(10))
+_EMERGENCY_LAND_URIS = DEFAULT_DISCOVERY_FLEET
+_PROJECT_ROOT = Path(__file__).resolve().parents[3]
+_DEFAULT_CAPTURED_PATH = _PROJECT_ROOT / "config/demo_path.json"
 _dtw_sequences: dict[str, dict] = {}
 DronePhase = Literal["preflight", "health_failed", "ready_to_deploy", "taking_off", "returning", "completed", "failed"]
 
@@ -37,18 +41,20 @@ class SwarmDeployRequest(BaseModel):
 
     swarm_size: int = Field(MAX_SWARM_SIZE, ge=MIN_SWARM_SIZE, le=MAX_SWARM_SIZE)
     formation: Literal["line", "triangle", "diamond", "v"] = "triangle"
-    pattern: Literal["line_shift", "square", "hold", "up_forward"] = "up_forward"
+    pattern: Literal["line_shift", "square", "hold", "up_forward", "captured_path"] = "up_forward"
     final_pose: tuple[float, float, float] = (0.50, 0.0, 0.55)
     slot_spacing_m: float = Field(0.49, gt=0)
     min_separation_m: float = Field(0.10, gt=0)
     enable_collision_avoidance: bool = True
-    no_fly_zone_paths: tuple[str, ...] = ("config/no_fly_zones/server_box.json",)
+    no_fly_zone_paths: tuple[str, ...] = ()
+    captured_path: str | None = None
+    yaw_rad: float = 0.0
     hover_z: float = Field(0.55, gt=0)
     dry_run: bool = True
     arm: bool = False
     allowed_uris: tuple[str, ...] = ()
     denied_uris: tuple[str, ...] = ()
-    health_timeout_s: float = Field(25.0, gt=0)
+    health_timeout_s: float = Field(40.0, gt=0)
     max_concurrent_checks: int = Field(1, ge=1, le=5)
     callback_url: str | None = Field(None, description="Optional infra callback URL for terminal deploy status")
 
@@ -62,6 +68,8 @@ class SwarmDeployRequest(BaseModel):
             min_separation_m=self.min_separation_m,
             enable_collision_avoidance=self.enable_collision_avoidance,
             no_fly_zone_paths=self.no_fly_zone_paths,
+            captured_path=self.captured_path,
+            yaw_rad=self.yaw_rad,
             hover_z=self.hover_z,
             dry_run=self.dry_run,
             arm=self.arm,
@@ -95,12 +103,8 @@ class SwarmDeployResponse(BaseModel):
 
 
 class SwarmHealthRequest(BaseModel):
-    allowed_uris: tuple[str, ...] = (
-        "radio://0/80/2M/E7E7E7E701",
-        "radio://0/80/2M/E7E7E7E702",
-        "radio://0/80/2M/E7E7E7E703",
-    )
-    health_timeout_s: float = Field(25.0, gt=0)
+    allowed_uris: tuple[str, ...] = DEFAULT_DISCOVERY_FLEET
+    health_timeout_s: float = Field(40.0, gt=0)
     max_concurrent_checks: int = Field(1, ge=1, le=5)
 
 
@@ -248,16 +252,14 @@ async def get_swarm_battery_telemetry(
     return SwarmBatteryTelemetryResponse(mission_id=mission_id, telemetry=telemetry)
 
 
-@router.post("/abort", response_model=SwarmDeployResponse | dict)
+@router.post("/abort", response_model=EmergencyLandResponse)
 async def abort_swarm(
     service: SwarmDeployService = Depends(get_service),
     x_api_key: str = Header(None, alias="X-API-Key"),
 ):
+    """Global abort: safe-land all known drones, regardless of mission state."""
     verify_api_key(x_api_key)
-    result = await service.abort()
-    if result is None:
-        return {"state": "idle", "message": "no active swarm mission"}
-    return _response_from_result(service.result_payload(result))
+    return await _global_emergency_land(service, EmergencyLandRequest())
 
 
 @router.post("/emergency-land", response_model=EmergencyLandResponse)
@@ -268,15 +270,7 @@ async def emergency_land_swarm(
 ):
     """Force land known drones, even if API mission state was lost."""
     verify_api_key(x_api_key)
-    active_stopped = await asyncio.to_thread(_emergency_stop_active_connections, service)
-    results = await asyncio.to_thread(
-        _emergency_land_uris,
-        request.target_uris,
-        request.land_duration_s,
-        request.stop_delay_s,
-    )
-    asyncio.create_task(service.abort())
-    return EmergencyLandResponse(status="emergency_land_sent", active_stopped=active_stopped, results=results)
+    return await _global_emergency_land(service, request)
 
 
 @dtw_router.post("/drone/trigger", response_model=DroneTriggerResponse)
@@ -323,6 +317,27 @@ async def launch_drone(
     return _drone_status_response(sequence_id, payload)
 
 
+@dtw_router.post("/drone/abort", response_model=EmergencyLandResponse)
+async def abort_drone_global(
+    service: SwarmDeployService = Depends(get_service),
+    x_api_key: str = Header(None, alias="X-API-Key"),
+):
+    """Global DTW abort. Does not require a sequence id."""
+    verify_api_key(x_api_key)
+    return await _global_emergency_land(service, EmergencyLandRequest())
+
+
+@dtw_router.post("/drone/abort/{sequence_id}", response_model=EmergencyLandResponse)
+async def abort_drone_sequence(
+    sequence_id: str,
+    service: SwarmDeployService = Depends(get_service),
+    x_api_key: str = Header(None, alias="X-API-Key"),
+):
+    """Compatibility abort: ignore sequence id and safe-land all known drones."""
+    verify_api_key(x_api_key)
+    return await _global_emergency_land(service, EmergencyLandRequest())
+
+
 @dtw_router.get("/drone/status/{sequence_id}", response_model=DroneStatusResponse)
 async def get_drone_status(
     sequence_id: str,
@@ -355,7 +370,12 @@ async def get_drone_result(
 
 async def _run_dtw_sequence(sequence_id: str, service: SwarmDeployService) -> None:
     try:
-        result = await service.prepare_for_launch(SwarmDeployRequest(dry_run=False, arm=True, health_timeout_s=25.0, max_concurrent_checks=3).to_spec())
+        request = SwarmDeployRequest(dry_run=False, arm=True, health_timeout_s=40.0, max_concurrent_checks=5)
+        if _DEFAULT_CAPTURED_PATH.exists():
+            request = request.model_copy(
+                update={"pattern": "captured_path", "captured_path": str(_DEFAULT_CAPTURED_PATH)}
+            )
+        result = await service.prepare_for_launch(request.to_spec())
         _dtw_sequences[sequence_id].update(
             swarm_mission_id=result.mission_id,
             state=result.state,
@@ -410,6 +430,26 @@ def _emergency_stop_active_connections(service: SwarmDeployService) -> list[str]
     if not callable(stop_active):
         return []
     return list(stop_active())
+
+
+async def _global_emergency_land(service: SwarmDeployService, request: EmergencyLandRequest) -> EmergencyLandResponse:
+    active_stopped = await asyncio.to_thread(_emergency_stop_active_connections, service)
+    results = await asyncio.to_thread(
+        _emergency_land_uris,
+        request.target_uris,
+        request.land_duration_s,
+        request.stop_delay_s,
+    )
+    await service.abort()
+    _mark_dtw_sequences_aborted()
+    return EmergencyLandResponse(status="emergency_land_sent", active_stopped=active_stopped, results=results)
+
+
+def _mark_dtw_sequences_aborted() -> None:
+    for sequence in _dtw_sequences.values():
+        if sequence.get("phase") == "completed" or sequence.get("state") in {"completed", "dry_run"}:
+            continue
+        sequence.update(state="aborted", phase="failed", message="global_abort_requested")
 
 
 def _emergency_land_uris(target_uris: tuple[str, ...], land_duration_s: float, stop_delay_s: float) -> list[dict]:

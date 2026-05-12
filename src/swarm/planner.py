@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import itertools
+import json
+import math
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 
 from src.safety.geofence import GeofenceBox
@@ -39,7 +42,7 @@ def formation_slots(spec: MissionSpec) -> list[Vec3]:
     """Build formation slots around `spec.final_pose` for the requested swarm size."""
 
     spec.validate()
-    x, y, z = spec.final_pose
+    x, y, z = _formation_center(spec)
     spacing = spec.slot_spacing_m
     n = spec.swarm_size
 
@@ -53,6 +56,9 @@ def formation_slots(spec: MissionSpec) -> list[Vec3]:
         offsets = _v_offsets(n, spacing)
     else:
         raise ValueError(f"unsupported formation: {spec.formation}")
+
+    if spec.pattern == "captured_path":
+        offsets = [_rotate_offset(offset, formation_yaw(spec)) for offset in offsets]
 
     return [(x + dx, y + dy, z + dz) for dx, dy, dz in offsets]
 
@@ -110,15 +116,29 @@ def _ranked_assignments(measured: list[Vec3], targets: list[Vec3]) -> list[tuple
 
 def _drone_plan(uri: str, launch: Vec3, slot: Vec3, spec: MissionSpec, zones: tuple[GeofenceBox, ...]) -> DronePlan:
     return_point = (launch[0], launch[1], spec.hover_z)
+    pattern_points = _pattern_points(slot, spec)
     return DronePlan(
         uri=uri,
         launch=launch,
         formation_slot=slot,
         route_to_formation=_route_between(launch, slot, spec, zones),
-        pattern_points=_pattern_points(slot, spec),
-        route_to_return=_route_between(slot, return_point, spec, zones),
+        pattern_points=pattern_points,
+        route_to_return=_route_to_return(slot, pattern_points, return_point, spec, zones),
         return_point=return_point,
     )
+
+
+def _route_to_return(
+    slot: Vec3,
+    pattern_points: tuple[Vec3, ...],
+    return_point: Vec3,
+    spec: MissionSpec,
+    zones: tuple[GeofenceBox, ...],
+) -> tuple[Vec3, ...]:
+    if spec.pattern == "captured_path" and pattern_points:
+        final_slot = _captured_final_slot(slot, spec)
+        return (final_slot,) + _route_between(final_slot, return_point, spec, zones)
+    return _route_between(slot, return_point, spec, zones)
 
 
 def validate_swarm_plan_clearance(
@@ -265,12 +285,157 @@ def _pattern_points(slot: Vec3, spec: MissionSpec) -> tuple[Vec3, ...]:
         # Each drone steps +1m forward (X) and +1m up (Z) from its slot,
         # holds, then comes back to the slot before returning to launch.
         return ((x + 1.0, y, z + 1.0), slot)
+    if spec.pattern == "captured_path":
+        center = _formation_center(spec)
+        slot_offset = (x - center[0], y - center[1], z - center[2])
+        start_yaw = formation_yaw(spec)
+        points: list[Vec3] = []
+        relative_points = _captured_relative_points(spec)
+        for (dx, dy, dz), yaw in zip(relative_points, pattern_yaws(spec, len(relative_points))):
+            rotated_offset = _rotate_offset(slot_offset, yaw - start_yaw)
+            points.append(
+                (
+                    center[0] + dx + rotated_offset[0],
+                    center[1] + dy + rotated_offset[1],
+                    center[2] + dz + rotated_offset[2],
+                )
+            )
+        return tuple(points)
     raise ValueError(f"unsupported pattern: {spec.pattern}")
+
+
+def _formation_center(spec: MissionSpec) -> Vec3:
+    if spec.pattern != "captured_path":
+        return spec.final_pose
+    return _load_captured_path(spec.captured_path)["start"]
+
+
+def _captured_relative_points(spec: MissionSpec) -> tuple[Vec3, ...]:
+    points = _load_captured_path(spec.captured_path)["relative_points"]
+    if not points:
+        raise ValueError("captured_path must contain at least one relative point")
+    return points
+
+
+def _captured_final_center(spec: MissionSpec) -> Vec3:
+    data = _load_captured_path(spec.captured_path)
+    configured = data.get("final_center")
+    if isinstance(configured, list | tuple) and len(configured) == 3:
+        return _vec3(configured, "final_center")
+    center = _formation_center(spec)
+    relative_points = _captured_relative_points(spec)
+    final_relative = relative_points[-1]
+    return (center[0] + final_relative[0], center[1] + final_relative[1], center[2] + final_relative[2])
+
+
+def _captured_final_slot(slot: Vec3, spec: MissionSpec) -> Vec3:
+    center = _formation_center(spec)
+    slot_offset = (slot[0] - center[0], slot[1] - center[1], slot[2] - center[2])
+    rotated_offset = _rotate_offset(slot_offset, go_to_yaw(spec) - formation_yaw(spec))
+    final_center = _captured_final_center(spec)
+    return (
+        final_center[0] + rotated_offset[0],
+        final_center[1] + rotated_offset[1],
+        final_center[2] + rotated_offset[2],
+    )
+
+
+def go_to_yaw(spec: MissionSpec) -> float:
+    if spec.pattern == "captured_path" and spec.captured_path:
+        yaw = _load_captured_path(spec.captured_path).get("yaw_rad")
+        if isinstance(yaw, int | float):
+            return float(yaw)
+    return spec.yaw_rad
+
+
+def formation_yaw(spec: MissionSpec) -> float:
+    if spec.pattern == "captured_path" and spec.captured_path:
+        start_yaw = _load_captured_path(spec.captured_path).get("start_yaw_rad")
+        if isinstance(start_yaw, int | float):
+            return float(start_yaw)
+        raw_yaws = _load_captured_path(spec.captured_path).get("yaw_points_rad")
+        if isinstance(raw_yaws, list | tuple) and raw_yaws:
+            return float(raw_yaws[0])
+    return go_to_yaw(spec)
+
+
+def pattern_yaws(spec: MissionSpec, count: int) -> tuple[float, ...]:
+    if count <= 0:
+        return tuple()
+    if spec.pattern == "captured_path" and spec.captured_path:
+        raw_yaws = _load_captured_path(spec.captured_path).get("yaw_points_rad")
+        if isinstance(raw_yaws, list | tuple) and raw_yaws:
+            yaws = tuple(float(yaw) for yaw in raw_yaws)
+            if len(yaws) >= count:
+                return yaws[:count]
+            return yaws + (yaws[-1],) * (count - len(yaws))
+    return (go_to_yaw(spec),) * count
+
+
+def pattern_duration_s(spec: MissionSpec) -> float:
+    if spec.pattern == "captured_path" and spec.captured_path:
+        duration = _load_captured_path(spec.captured_path).get("pattern_s")
+        if isinstance(duration, int | float) and float(duration) > 0:
+            return float(duration)
+    return spec.pattern_s
+
+
+def pattern_hold_s(spec: MissionSpec) -> float:
+    if spec.pattern == "captured_path" and spec.captured_path:
+        hold_s = _load_captured_path(spec.captured_path).get("pattern_hold_s")
+        if isinstance(hold_s, int | float) and float(hold_s) >= 0:
+            return float(hold_s)
+        return 0.0
+    return spec.hold_s
+
+
+def pattern_final_hold_s(spec: MissionSpec) -> float:
+    if spec.pattern == "captured_path" and spec.captured_path:
+        final_hold_s = _load_captured_path(spec.captured_path).get("pattern_final_hold_s")
+        if isinstance(final_hold_s, int | float) and float(final_hold_s) >= 0:
+            return float(final_hold_s)
+    return 0.0
+
+
+@lru_cache(maxsize=8)
+def _load_captured_path(raw_path: str | None) -> dict[str, object]:
+    if raw_path is None:
+        raise ValueError("captured_path is required")
+    path = Path(raw_path)
+    if not path.exists():
+        raise ValueError(f"captured_path_missing:{raw_path}")
+    data = json.loads(path.read_text())
+    start = _vec3(data.get("start"), "start")
+    relative_points = tuple(_vec3(point, "relative_points") for point in data.get("relative_points", ()))
+    return {
+        "start": start,
+        "relative_points": relative_points,
+        "final_center": data.get("final_center"),
+        "pattern_s": data.get("pattern_s"),
+        "pattern_hold_s": data.get("pattern_hold_s"),
+        "pattern_final_hold_s": data.get("pattern_final_hold_s"),
+        "start_yaw_rad": data.get("start_yaw_rad"),
+        "yaw_rad": data.get("yaw_rad"),
+        "yaw_points_rad": data.get("yaw_points_rad"),
+    }
+
+
+def _vec3(raw: object, label: str) -> Vec3:
+    if not isinstance(raw, list | tuple) or len(raw) != 3:
+        raise ValueError(f"captured_path_invalid:{label}")
+    return (float(raw[0]), float(raw[1]), float(raw[2]))
+
+
+def _rotate_offset(offset: Vec3, yaw_rad: float) -> Vec3:
+    x, y, z = offset
+    c = math.cos(yaw_rad)
+    s = math.sin(yaw_rad)
+    return (x * c - y * s, x * s + y * c, z)
 
 
 def _triangle_offsets(n: int, spacing: float) -> list[Vec3]:
     top_z = spacing * 0.75
-    top_x = spacing * 0.45
+    top_x = spacing * 0.60
     if n == 5:
         return [
             (0.0, -spacing, 0.0),

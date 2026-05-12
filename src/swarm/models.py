@@ -39,7 +39,7 @@ class HealthThresholds:
     min_voltage: float = 3.75
     min_battery_percent: int = 25
     min_connection_quality: int = 70
-    health_timeout_s: float = 25.0
+    health_timeout_s: float = 40.0
     estimator_timeout_s: float = 5.0
     max_concurrent_checks: int = 1
 
@@ -109,12 +109,14 @@ class MissionSpec:
 
     swarm_size: int = MAX_SWARM_SIZE
     formation: Literal["line", "triangle", "diamond", "v"] = "triangle"
-    pattern: Literal["line_shift", "square", "hold", "up_forward"] = "up_forward"
+    pattern: Literal["line_shift", "square", "hold", "up_forward", "captured_path"] = "up_forward"
     final_pose: Vec3 = (0.50, 0.0, 0.55)
     slot_spacing_m: float = 0.49
     min_separation_m: float = 0.10
     enable_collision_avoidance: bool = True
-    no_fly_zone_paths: tuple[str, ...] = ("config/no_fly_zones/server_box.json",)
+    no_fly_zone_paths: tuple[str, ...] = ()
+    captured_path: str | None = None
+    yaw_rad: float = 0.0
     hover_z: float = 0.55
     takeoff_s: float = 2.5
     move_s: float = 4.0
@@ -125,7 +127,7 @@ class MissionSpec:
     arm: bool = False
     allowed_uris: tuple[str, ...] = ()
     denied_uris: tuple[str, ...] = ()
-    health_timeout_s: float = 25.0
+    health_timeout_s: float = 40.0
     max_concurrent_checks: int = 1
     callback_url: str | None = None
     metadata: dict = field(default_factory=dict)
@@ -141,6 +143,8 @@ class MissionSpec:
             raise ValueError("slot_spacing_m must be >= min_separation_m")
         if self.hover_z <= 0:
             raise ValueError("hover_z must be positive")
+        if self.pattern == "captured_path" and not self.captured_path:
+            raise ValueError("captured_path is required for captured_path pattern")
         if self.takeoff_s <= 0 or self.move_s <= 0 or self.land_s <= 0:
             raise ValueError("flight durations must be positive")
         if self.health_timeout_s <= 0:
