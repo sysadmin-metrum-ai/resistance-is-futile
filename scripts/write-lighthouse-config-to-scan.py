@@ -1,6 +1,7 @@
 """Copy Lighthouse config from one Crazyflie to scanned Crazyflies.
 
 Usage:
+    uv run python scripts/write-lighthouse-config-to-scan.py --fleet --yes
     uv run python scripts/write-lighthouse-config-to-scan.py --scan --yes
     uv run python scripts/write-lighthouse-config-to-scan.py --source-uri radio://0/80/2M/E7E7E7E706 --target-uri radio://0/80/2M/E7E7E7E701 --yes
 
@@ -17,6 +18,9 @@ from cflib.crazyflie import Crazyflie
 from cflib.crazyflie.mem import LighthouseMemHelper
 from cflib.crazyflie.syncCrazyflie import SyncCrazyflie
 from cflib.localization.lighthouse_config_manager import LighthouseConfigWriter
+
+
+DEFAULT_SOURCE_URI = "radio://0/80/2M/E7E7E7E701"
 
 
 def status(message: str) -> None:
@@ -40,11 +44,24 @@ def scan_uris() -> list[str]:
     return [uri for uri, _info in cflib.crtp.scan_interfaces()]
 
 
-def target_uris(scanned: list[str], explicit: list[str], source_uri: str, include_source: bool) -> list[str]:
+def default_fleet_uris() -> list[str]:
+    return [
+        *(f"radio://0/80/2M/E7E7E7E7{index:02d}" for index in range(0, 5)),
+        *(f"radio://1/90/2M/E7E7E7E7{index:02d}" for index in range(5, 10)),
+    ]
+
+
+def target_uris(
+    scanned: list[str],
+    explicit: list[str],
+    source_uri: str,
+    include_source: bool,
+    fleet: list[str] | None = None,
+) -> list[str]:
     source = normalize_uri(source_uri)
     result = []
 
-    for uri in [*scanned, *explicit]:
+    for uri in [*scanned, *(fleet or []), *explicit]:
         normalized = normalize_uri(uri)
         if not include_source and normalized == source:
             continue
@@ -123,8 +140,9 @@ def write_lighthouse_config(
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Write source Lighthouse config to scanned Crazyflies")
-    parser.add_argument("--source-uri", required=True)
+    parser.add_argument("--source-uri", default=DEFAULT_SOURCE_URI)
     parser.add_argument("--target-uri", action="append", default=[], help="Explicit target URI; repeatable")
+    parser.add_argument("--fleet", action="store_true", help="Include default fleet 00-09 split across channels 80/90")
     parser.add_argument("--scan", action="store_true", help="Also include scanned Crazyflies")
     parser.add_argument("--no-scan", dest="scan", action="store_false", help=argparse.SUPPRESS)
     parser.add_argument("--include-source", action="store_true", help="Allow writing back to the source URI")
@@ -141,10 +159,12 @@ def main(argv: list[str] | None = None) -> int:
     try:
         cflib.crtp.init_drivers()
         scanned = scan_uris() if args.scan else []
-        targets = target_uris(scanned, args.target_uri, args.source_uri, args.include_source)
+        fleet = default_fleet_uris() if args.fleet else []
+        targets = target_uris(scanned, args.target_uri, args.source_uri, args.include_source, fleet)
 
         status(f"Source: {args.source_uri}")
         status(f"Scanned targets: {scanned if scanned else 'none'}")
+        status(f"Fleet targets: {fleet if fleet else 'none'}")
         status(f"Will write targets: {targets if targets else 'none'}")
 
         if not targets:

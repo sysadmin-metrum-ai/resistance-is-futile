@@ -15,6 +15,8 @@ from src.swarm.assignment import distance3
 from src.swarm.models import MissionSpec
 from src.swarm.models import Vec3
 
+CAPTURED_RTL_XY_LANE_M = 0.15
+
 
 @dataclass(frozen=True)
 class DronePlan:
@@ -137,7 +139,9 @@ def _route_to_return(
 ) -> tuple[Vec3, ...]:
     if spec.pattern == "captured_path" and pattern_points:
         final_slot = _captured_final_slot(slot, spec)
-        return (final_slot,) + _route_between(final_slot, return_point, spec, zones)
+        lane_point = _captured_return_lane_point(final_slot, return_point)
+        altitude_point = (lane_point[0], lane_point[1], return_point[2])
+        return (final_slot, lane_point, altitude_point, return_point)
     return _route_between(slot, return_point, spec, zones)
 
 
@@ -285,6 +289,8 @@ def _pattern_points(slot: Vec3, spec: MissionSpec) -> tuple[Vec3, ...]:
         # Each drone steps +1m forward (X) and +1m up (Z) from its slot,
         # holds, then comes back to the slot before returning to launch.
         return ((x + 1.0, y, z + 1.0), slot)
+    if spec.pattern == "crazy_pinwheel":
+        return _crazy_pinwheel_points(slot, spec)
     if spec.pattern == "captured_path":
         center = _formation_center(spec)
         slot_offset = (x - center[0], y - center[1], z - center[2])
@@ -302,6 +308,27 @@ def _pattern_points(slot: Vec3, spec: MissionSpec) -> tuple[Vec3, ...]:
             )
         return tuple(points)
     raise ValueError(f"unsupported pattern: {spec.pattern}")
+
+
+def _crazy_pinwheel_points(slot: Vec3, spec: MissionSpec) -> tuple[Vec3, ...]:
+    cx, cy, cz = spec.final_pose
+    dx, dy, dz = slot[0] - cx, slot[1] - cy, slot[2] - cz
+    radius = math.hypot(dx, dy)
+    if radius < 0.05:
+        return (
+            (slot[0], slot[1], slot[2] + 0.22),
+            (slot[0], slot[1], slot[2] + 0.34),
+            (slot[0], slot[1], slot[2] + 0.22),
+            slot,
+        )
+
+    points: list[Vec3] = []
+    for angle in (math.pi / 2.0, math.pi, math.pi * 1.5, math.pi * 2.0):
+        rdx, rdy, _ = _rotate_offset((dx, dy, dz), angle)
+        z_lift = 0.10 if angle in (math.pi / 2.0, math.pi * 1.5) else 0.0
+        points.append((cx + rdx, cy + rdy, slot[2] + z_lift))
+    points.append(slot)
+    return tuple(points)
 
 
 def _formation_center(spec: MissionSpec) -> Vec3:
@@ -338,6 +365,17 @@ def _captured_final_slot(slot: Vec3, spec: MissionSpec) -> Vec3:
         final_center[1] + rotated_offset[1],
         final_center[2] + rotated_offset[2],
     )
+
+
+def _captured_return_lane_point(final_slot: Vec3, return_point: Vec3) -> Vec3:
+    dy = return_point[1]
+    if dy > 0:
+        lane_y = dy + CAPTURED_RTL_XY_LANE_M
+    elif dy < 0:
+        lane_y = dy - CAPTURED_RTL_XY_LANE_M
+    else:
+        lane_y = CAPTURED_RTL_XY_LANE_M
+    return (return_point[0], lane_y, final_slot[2])
 
 
 def go_to_yaw(spec: MissionSpec) -> float:

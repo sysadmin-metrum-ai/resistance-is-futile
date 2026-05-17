@@ -23,7 +23,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--api-key", default=None, help="Optional X-API-Key value")
     parser.add_argument("--swarm-size", type=int, default=5, choices=[3, 4, 5])
     parser.add_argument("--formation", choices=["line", "triangle", "diamond", "v"], default="triangle")
-    parser.add_argument("--pattern", choices=["line_shift", "square", "hold", "up_forward", "captured_path"], default="up_forward")
+    parser.add_argument("--pattern", choices=["line_shift", "square", "hold", "up_forward", "captured_path", "crazy_pinwheel"], default="up_forward")
     parser.add_argument("--captured-path", default=None, help="Path JSON from scripts/capture-demo-path.py")
     parser.add_argument("--yaw-rad", type=float, default=0.0)
     parser.add_argument("--allow-uri", action="append", default=[], help="Candidate URI; repeatable")

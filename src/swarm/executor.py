@@ -102,9 +102,10 @@ def _build_schedule(
     t += pattern_final_hold
 
     return_steps: list[float] = []
-    for _ in range(n_return):
+    for return_ix in range(n_return):
         return_steps.append(t)
-        t += spec.move_s + spec.hold_s
+        settle_s = spec.landing_settle_s if return_ix == n_return - 1 else spec.hold_s
+        t += spec.move_s + settle_s
 
     land_at = t
     cleanup_at = t + spec.land_s + LED_POST_LAND_S
@@ -227,6 +228,15 @@ class CflibDroneConnection:
 
     def set_led_green(self) -> None:
         self._set_led_color("green", 0, 100, 0)
+
+    def set_led_yellow(self) -> None:
+        self._set_led_color("yellow", 100, 100, 0)
+
+    def set_led_cyan(self) -> None:
+        self._set_led_color("cyan", 0, 100, 100)
+
+    def set_led_purple(self) -> None:
+        self._set_led_color("purple", 80, 0, 100)
 
     def _set_led_color(self, label: str, red: int, green: int, blue: int) -> None:
         try:
@@ -742,6 +752,11 @@ class SwarmExecutor:
                 connection.commander.stop()
             except Exception:
                 pass
+            if hasattr(connection, "set_led_off"):
+                try:
+                    connection.set_led_off()  # type: ignore[attr-defined]
+                except Exception:
+                    pass
 
     def emergency_stop_active(self) -> list[str]:
         self._emergency_stop.set()
@@ -767,9 +782,11 @@ class SwarmExecutor:
         spec = swarm_plan.spec
         uri = drone_plan.uri
         commander = connection.commander
+        crazy_mode = spec.pattern == "crazy_pinwheel"
         yaw = go_to_yaw(spec)
         start_yaw = formation_yaw(spec)
         pattern_s = pattern_duration_s(spec)
+        drone_index = swarm_plan.drones.index(drone_plan)
         events: list[str] = []
 
         # Pad shorter routes by holding at the last waypoint so every drone
@@ -792,9 +809,10 @@ class SwarmExecutor:
         if hasattr(connection, "start_battery_watch"):
             _start_battery_watch(connection, telemetry_callback)
             events.append(f"{uri}:battery_watch_start")
-        blink = _start_led_blink(connection, uri, "blue")
+        blink_color, blink_phase_s = _in_flight_blink_style(spec, drone_index)
+        blink = _start_led_blink(connection, uri, blink_color, phase_s=blink_phase_s)
         if blink is not None:
-            events.append(f"{uri}:led_blue_blink_start")
+            events.append(f"{uri}:led_{blink_color}_blink_start")
 
         battery_watch_landed = False
 
@@ -836,10 +854,10 @@ class SwarmExecutor:
 
             if not battery_watch_landed and last_pattern_completion_at is not None:
                 _sleep_until(last_pattern_completion_at)
-                if blink is not None:
+                if blink is not None and not crazy_mode:
                     _stop_led_blink(blink)
                     blink = None
-                if hasattr(connection, "set_led_orange"):
+                if not crazy_mode and hasattr(connection, "set_led_orange"):
                     connection.set_led_orange()  # type: ignore[attr-defined]
                     events.append(f"{uri}:led_orange")
                     logger.info("swarm executor: %s LED orange", uri)
@@ -867,8 +885,9 @@ class SwarmExecutor:
                 commander.land(0.0, spec.land_s, yaw=None)
                 events.append(f"{uri}:land")
                 _sleep_until(schedule.land_at + spec.land_s)
-                blink = _replace_led_blink(blink, connection, uri, "green")
-                if blink is not None:
+                if not crazy_mode:
+                    blink = _replace_led_blink(blink, connection, uri, "green")
+                if blink is not None and not crazy_mode:
                     events.append(f"{uri}:led_green_blink_start")
         _sleep_until(schedule.cleanup_at)
         if self._emergency_stop.is_set():
@@ -909,7 +928,19 @@ def _notify_phase(callback: PhaseCallback | None, phase: str, details: dict | No
         logger.debug("swarm executor: phase callback failed", exc_info=True)
 
 
-def _start_led_blink(connection: DroneConnection, uri: str, color: str) -> tuple[threading.Event, threading.Thread] | None:
+def _in_flight_blink_style(spec: MissionSpec, drone_index: int) -> tuple[str, float]:
+    if spec.pattern != "crazy_pinwheel":
+        return "blue", 0.0
+    colors = ("cyan", "purple", "yellow", "blue", "green")
+    return colors[drone_index % len(colors)], drone_index * 0.17
+
+
+def _start_led_blink(
+    connection: DroneConnection,
+    uri: str,
+    color: str,
+    phase_s: float = 0.0,
+) -> tuple[threading.Event, threading.Thread] | None:
     if hasattr(connection, "can_blink_led") and not connection.can_blink_led():  # type: ignore[attr-defined]
         return None
     setter = getattr(connection, f"set_led_{color}", None)
@@ -917,9 +948,14 @@ def _start_led_blink(connection: DroneConnection, uri: str, color: str) -> tuple
         return None
 
     stop = threading.Event()
-    setter()
+    if phase_s <= 0:
+        setter()
+    else:
+        connection.set_led_off()  # type: ignore[attr-defined]
 
     def blink() -> None:
+        if phase_s > 0 and stop.wait(phase_s):
+            return
         lit = True
         while not stop.is_set():
             if lit:

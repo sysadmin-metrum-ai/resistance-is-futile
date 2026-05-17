@@ -41,7 +41,7 @@ class SwarmDeployRequest(BaseModel):
 
     swarm_size: int = Field(MAX_SWARM_SIZE, ge=MIN_SWARM_SIZE, le=MAX_SWARM_SIZE)
     formation: Literal["line", "triangle", "diamond", "v"] = "triangle"
-    pattern: Literal["line_shift", "square", "hold", "up_forward", "captured_path"] = "up_forward"
+    pattern: Literal["line_shift", "square", "hold", "up_forward", "captured_path", "crazy_pinwheel"] = "up_forward"
     final_pose: tuple[float, float, float] = (0.50, 0.0, 0.55)
     slot_spacing_m: float = Field(0.49, gt=0)
     min_separation_m: float = Field(0.10, gt=0)
@@ -50,6 +50,7 @@ class SwarmDeployRequest(BaseModel):
     captured_path: str | None = None
     yaw_rad: float = 0.0
     hover_z: float = Field(0.55, gt=0)
+    landing_settle_s: float = Field(0.5, ge=0)
     dry_run: bool = True
     arm: bool = False
     allowed_uris: tuple[str, ...] = ()
@@ -71,6 +72,7 @@ class SwarmDeployRequest(BaseModel):
             captured_path=self.captured_path,
             yaw_rad=self.yaw_rad,
             hover_z=self.hover_z,
+            landing_settle_s=self.landing_settle_s,
             dry_run=self.dry_run,
             arm=self.arm,
             allowed_uris=self.allowed_uris,
@@ -296,6 +298,29 @@ async def trigger_drone(
     )
 
 
+@dtw_router.post("/drone/crazy-trigger", response_model=DroneTriggerResponse)
+async def trigger_crazy_drone(
+    service: SwarmDeployService = Depends(get_service),
+    x_api_key: str = Header(None, alias="X-API-Key"),
+):
+    """Prepare a higher-energy geometric swarm path without changing the default trigger."""
+    verify_api_key(x_api_key)
+    sequence_id = f"SEQ-{uuid4().hex[:8].upper()}"
+    _dtw_sequences[sequence_id] = {
+        "swarm_mission_id": None,
+        "state": "accepted",
+        "phase": "preflight",
+        "message": "crazy_preflight",
+        "started_at": datetime.now(timezone.utc),
+    }
+    asyncio.create_task(_run_crazy_dtw_sequence(sequence_id, service))
+    return DroneTriggerResponse(
+        sequence_id=sequence_id,
+        phase="preflight",
+        estimated_duration_seconds=_DRONE_ESTIMATED_DURATION_SECONDS,
+    )
+
+
 @dtw_router.post("/drone/launch/{sequence_id}", response_model=DroneStatusResponse)
 async def launch_drone(
     sequence_id: str,
@@ -376,6 +401,32 @@ async def _run_dtw_sequence(sequence_id: str, service: SwarmDeployService) -> No
                 update={"pattern": "captured_path", "captured_path": str(_DEFAULT_CAPTURED_PATH)}
             )
         result = await service.prepare_for_launch(request.to_spec())
+        _dtw_sequences[sequence_id].update(
+            swarm_mission_id=result.mission_id,
+            state=result.state,
+            message=result.message,
+        )
+    except Exception as exc:
+        _dtw_sequences[sequence_id].update(state="failed", phase="failed", message=str(exc))
+
+
+async def _run_crazy_dtw_sequence(sequence_id: str, service: SwarmDeployService) -> None:
+    try:
+        spec = MissionSpec(
+            dry_run=False,
+            arm=True,
+            health_timeout_s=40.0,
+            max_concurrent_checks=5,
+            formation="diamond",
+            pattern="crazy_pinwheel",
+            final_pose=(0.45, 0.0, 0.62),
+            slot_spacing_m=0.42,
+            hover_z=0.55,
+            move_s=3.0,
+            pattern_s=1.2,
+            hold_s=0.6,
+        )
+        result = await service.prepare_for_launch(spec)
         _dtw_sequences[sequence_id].update(
             swarm_mission_id=result.mission_id,
             state=result.state,
@@ -472,10 +523,22 @@ def _emergency_land_uris(target_uris: tuple[str, ...], land_duration_s: float, s
                 commander.land(0.0, land_duration_s)
                 time.sleep(stop_delay_s)
                 commander.stop()
+                _turn_off_known_led_decks(cf)
             results.append({"uri": uri, "status": "landed", "error": None})
         except Exception as exc:
             results.append({"uri": uri, "status": "failed", "error": str(exc)})
     return results
+
+
+def _turn_off_known_led_decks(cf) -> None:
+    for group, name, value in (
+        ("colorLedBot", "wrgb8888", "0"),
+        ("ring", "effect", "0"),
+    ):
+        try:
+            cf.param.set_value(f"{group}.{name}", value)
+        except Exception:
+            pass
 
 
 def _dtw_pending_response(sequence_id: str, sequence: dict) -> SwarmDeployResponse:

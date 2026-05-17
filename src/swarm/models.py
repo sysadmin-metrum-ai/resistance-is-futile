@@ -109,7 +109,7 @@ class MissionSpec:
 
     swarm_size: int = MAX_SWARM_SIZE
     formation: Literal["line", "triangle", "diamond", "v"] = "triangle"
-    pattern: Literal["line_shift", "square", "hold", "up_forward", "captured_path"] = "up_forward"
+    pattern: Literal["line_shift", "square", "hold", "up_forward", "captured_path", "crazy_pinwheel"] = "up_forward"
     final_pose: Vec3 = (0.50, 0.0, 0.55)
     slot_spacing_m: float = 0.49
     min_separation_m: float = 0.10
@@ -122,6 +122,7 @@ class MissionSpec:
     move_s: float = 4.0
     pattern_s: float = 3.0
     hold_s: float = 3.0
+    landing_settle_s: float = 0.5
     land_s: float = 3.0
     dry_run: bool = True
     arm: bool = False
@@ -147,6 +148,8 @@ class MissionSpec:
             raise ValueError("captured_path is required for captured_path pattern")
         if self.takeoff_s <= 0 or self.move_s <= 0 or self.land_s <= 0:
             raise ValueError("flight durations must be positive")
+        if self.landing_settle_s < 0:
+            raise ValueError("landing_settle_s must be >= 0")
         if self.health_timeout_s <= 0:
             raise ValueError("health_timeout_s must be positive")
         if self.max_concurrent_checks < 1:
