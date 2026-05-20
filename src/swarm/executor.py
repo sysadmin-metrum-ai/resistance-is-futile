@@ -97,16 +97,18 @@ def _build_schedule(
     takeoff_at = t
     t += spec.takeoff_s + spec.hold_s
 
-    formation_steps: list[float] = []
-    for _ in range(n_formation):
-        formation_steps.append(t)
-        t += spec.move_s + spec.hold_s
-    formation_fire_ats = tuple(
-        tuple(fire_at + drone_ix * max(1, n_formation) * spec.move_s for fire_at in formation_steps)
-        for drone_ix in range(n_drones)
+    if isinstance(plan, SwarmPlan):
+        formation_ranks = _formation_stagger_ranks(plan)
+    else:
+        formation_ranks = tuple(range(n_drones))
+    formation_fire_ats = _formation_times(
+        start_at=t,
+        spec=spec,
+        n_formation=n_formation,
+        formation_ranks=formation_ranks,
     )
     if n_formation > 0:
-        t += max(0, n_drones - 1) * max(1, n_formation) * spec.move_s
+        t += n_drones * n_formation * (spec.move_s + spec.hold_s)
 
     # Brief LED-blue ack right after the formation is locked, before the
     # pattern phase begins. Adds 0.3s of dwell so the visual signal is
@@ -121,7 +123,7 @@ def _build_schedule(
     t += pattern_final_hold
 
     if isinstance(plan, SwarmPlan):
-        return_ranks = _return_stagger_ranks(plan)
+        return_ranks = _return_stagger_ranks(plan, n_return=n_return)
     else:
         return_ranks = tuple(range(n_drones))
     return_fire_ats, land_ats = _return_and_land_times(
@@ -140,6 +142,23 @@ def _build_schedule(
         land_ats=land_ats,
         cleanup_at=cleanup_at,
     )
+
+
+def _formation_times(
+    *,
+    start_at: float,
+    spec: MissionSpec,
+    n_formation: int,
+    formation_ranks: tuple[int, ...],
+) -> tuple[tuple[float, ...], ...]:
+    if n_formation <= 0:
+        return tuple(tuple() for _ in formation_ranks)
+    route_span_s = n_formation * (spec.move_s + spec.hold_s)
+    rank_fire_ats: dict[int, tuple[float, ...]] = {}
+    for rank in range(len(formation_ranks)):
+        route_start = start_at + rank * route_span_s
+        rank_fire_ats[rank] = tuple(route_start + step * (spec.move_s + spec.hold_s) for step in range(n_formation))
+    return tuple(rank_fire_ats[rank] for rank in formation_ranks)
 
 
 def _return_and_land_times(
@@ -173,10 +192,10 @@ def _return_and_land_times(
     )
 
 
-def _return_stagger_ranks(plan: SwarmPlan) -> tuple[int, ...]:
+def _formation_stagger_ranks(plan: SwarmPlan) -> tuple[int, ...]:
     ordered = sorted(
         enumerate(plan.drones),
-        key=lambda item: (_return_distance_m(item[1]), item[0]),
+        key=lambda item: (_route_distance_m(item[1].return_point, item[1].route_to_formation), item[0]),
     )
     ranks = [0] * len(plan.drones)
     for rank, (drone_ix, _drone) in enumerate(ordered):
@@ -184,10 +203,34 @@ def _return_stagger_ranks(plan: SwarmPlan) -> tuple[int, ...]:
     return tuple(ranks)
 
 
-def _return_distance_m(drone: DronePlan) -> float:
+def _return_stagger_ranks(plan: SwarmPlan, *, n_return: int) -> tuple[int, ...]:
+    shared_steps = 1 if n_return > 1 else 0
+    ordered = sorted(
+        enumerate(plan.drones),
+        key=lambda item: (_return_home_distance_m(item[1], shared_steps=shared_steps), item[0]),
+    )
+    ranks = [0] * len(plan.drones)
+    for rank, (drone_ix, _drone) in enumerate(ordered):
+        ranks[drone_ix] = rank
+    return tuple(ranks)
+
+
+def _return_home_distance_m(drone: DronePlan, *, shared_steps: int) -> float:
     start = drone.pattern_points[-1] if drone.pattern_points else drone.formation_slot
-    points = (start, *drone.route_to_return)
-    return sum(((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2) ** 0.5 for a, b in zip(points, points[1:]))
+    shared = drone.route_to_return[:shared_steps]
+    home_route = drone.route_to_return[shared_steps:]
+    if shared:
+        start = shared[-1]
+    return _route_distance_m(start, home_route)
+
+
+def _route_distance_m(start: tuple[float, float, float], route: tuple[tuple[float, float, float], ...]) -> float:
+    points = (start, *route)
+    return sum(_distance_m(a, b) for a, b in zip(points, points[1:]))
+
+
+def _distance_m(a: tuple[float, float, float], b: tuple[float, float, float]) -> float:
+    return ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2) ** 0.5
 
 
 def _sleep_until(deadline: float) -> None:

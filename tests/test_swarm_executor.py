@@ -7,6 +7,8 @@ from src.swarm.executor import RTL_LAND_SEQUENCE_DELAY_S
 from src.swarm.executor import SwarmExecutor
 from src.swarm.executor import _build_schedule
 from src.swarm.models import MissionSpec
+from src.swarm.planner import DronePlan
+from src.swarm.planner import SwarmPlan
 from src.swarm.planner import build_swarm_plan
 
 
@@ -187,16 +189,53 @@ def test_schedule_uses_landing_settle_after_final_return(monkeypatch):
     schedule = _build_schedule(spec, n_formation=1, n_pattern=1, n_return=2)
 
     assert schedule.return_fire_ats == (
-        (125.3, 132.3),
-        (125.3, 139.8 + RTL_LAND_SEQUENCE_DELAY_S),
-        (125.3, 147.3 + 2 * RTL_LAND_SEQUENCE_DELAY_S),
+        (131.3, 138.3),
+        (131.3, 145.8 + RTL_LAND_SEQUENCE_DELAY_S),
+        (131.3, 153.3 + 2 * RTL_LAND_SEQUENCE_DELAY_S),
     )
     assert schedule.land_ats == (
-        136.8,
-        144.3 + RTL_LAND_SEQUENCE_DELAY_S,
-        151.8 + 2 * RTL_LAND_SEQUENCE_DELAY_S,
+        142.8,
+        150.3 + RTL_LAND_SEQUENCE_DELAY_S,
+        157.8 + 2 * RTL_LAND_SEQUENCE_DELAY_S,
     )
-    assert schedule.land_at == 155.8
+    assert schedule.land_at == 161.8
+
+
+def test_schedule_sends_closest_formation_routes_first(monkeypatch):
+    monkeypatch.setattr("src.swarm.executor.time.monotonic", lambda: 100.0)
+    spec = MissionSpec(swarm_size=3, takeoff_s=1.0, move_s=2.0, hold_s=1.0, no_fly_zone_paths=())
+    plan = SwarmPlan(
+        spec=spec,
+        assignment_cost=0.0,
+        drones=(
+            DronePlan("far", (0.0, 0.0, 0.55), (1.0, 0.0, 0.55), ((1.0, 0.0, 0.55),), (), (), (0.0, 0.0, 0.55)),
+            DronePlan("close", (0.0, 0.0, 0.55), (0.1, 0.0, 0.55), ((0.1, 0.0, 0.55),), (), (), (0.0, 0.0, 0.55)),
+            DronePlan("mid", (0.0, 0.0, 0.55), (0.5, 0.0, 0.55), ((0.5, 0.0, 0.55),), (), (), (0.0, 0.0, 0.55)),
+        ),
+    )
+
+    schedule = _build_schedule(plan, n_formation=1, n_pattern=0, n_return=0)
+
+    assert schedule.formation_fire_ats[1][0] < schedule.formation_fire_ats[2][0] < schedule.formation_fire_ats[0][0]
+
+
+def test_schedule_sends_closest_home_first_after_shared_return_step(monkeypatch):
+    monkeypatch.setattr("src.swarm.executor.time.monotonic", lambda: 100.0)
+    spec = MissionSpec(swarm_size=3, takeoff_s=1.0, move_s=2.0, hold_s=1.0, no_fly_zone_paths=())
+    final_pose = (0.0, 0.0, 0.55)
+    plan = SwarmPlan(
+        spec=spec,
+        assignment_cost=0.0,
+        drones=(
+            DronePlan("far", (1.0, 0.0, 0.55), final_pose, (), (), (final_pose, (1.0, 0.0, 0.55)), (1.0, 0.0, 0.55)),
+            DronePlan("close", (0.1, 0.0, 0.55), final_pose, (), (), (final_pose, (0.1, 0.0, 0.55)), (0.1, 0.0, 0.55)),
+            DronePlan("mid", (0.5, 0.0, 0.55), final_pose, (), (), (final_pose, (0.5, 0.0, 0.55)), (0.5, 0.0, 0.55)),
+        ),
+    )
+
+    schedule = _build_schedule(plan, n_formation=0, n_pattern=0, n_return=2)
+
+    assert schedule.return_fire_ats[1][1] < schedule.return_fire_ats[2][1] < schedule.return_fire_ats[0][1]
 
 
 def test_executor_turns_orange_after_final_pattern_waypoint(monkeypatch):
