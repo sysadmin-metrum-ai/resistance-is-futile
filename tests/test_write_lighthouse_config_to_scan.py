@@ -41,15 +41,55 @@ assert SPEC.loader is not None
 SPEC.loader.exec_module(module)
 
 
-def test_parse_args_defaults_to_source_drone_and_requires_yes():
+def test_parse_args_defaults_to_source_drone_01_and_requires_yes_to_write():
     args = module.parse_args([])
 
-    assert args.source_uri == "radio://0/80/2M/E7E7E7E702"
+    assert args.source_uri == "radio://0/80/2M/E7E7E7E701"
     assert args.target_uri == []
-    assert args.no_scan is False
+    assert args.fleet is False
+    assert args.scan is False
     assert args.yes is False
     assert args.system_type == 2
     assert args.base_station_count is None
+
+
+def test_default_fleet_uris_splits_drones_across_two_radios():
+    fleet = module.default_fleet_uris()
+
+    assert fleet == [
+        "radio://0/80/2M/E7E7E7E700",
+        "radio://0/80/2M/E7E7E7E701",
+        "radio://0/80/2M/E7E7E7E702",
+        "radio://0/80/2M/E7E7E7E703",
+        "radio://0/80/2M/E7E7E7E704",
+        "radio://1/90/2M/E7E7E7E705",
+        "radio://1/90/2M/E7E7E7E706",
+        "radio://1/90/2M/E7E7E7E707",
+        "radio://1/90/2M/E7E7E7E708",
+        "radio://1/90/2M/E7E7E7E709",
+    ]
+
+
+def test_target_uris_can_include_default_fleet_without_source():
+    targets = module.target_uris(
+        [],
+        [],
+        "radio://0/80/2M/E7E7E7E701",
+        include_source=False,
+        fleet=module.default_fleet_uris(),
+    )
+
+    assert targets == [
+        "radio://0/80/2M/E7E7E7E700",
+        "radio://0/80/2M/E7E7E7E702",
+        "radio://0/80/2M/E7E7E7E703",
+        "radio://0/80/2M/E7E7E7E704",
+        "radio://1/90/2M/E7E7E7E705",
+        "radio://1/90/2M/E7E7E7E706",
+        "radio://1/90/2M/E7E7E7E707",
+        "radio://1/90/2M/E7E7E7E708",
+        "radio://1/90/2M/E7E7E7E709",
+    ]
 
 
 def test_target_uris_skips_exact_source_and_dedupes():

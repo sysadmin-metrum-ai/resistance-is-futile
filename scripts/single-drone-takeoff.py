@@ -147,7 +147,7 @@ def main() -> int:
         print(f"[8/8] takeoff -> {args.height}m, hover {args.hover}s, land")
         commander = cf.high_level_commander
         commander.takeoff(args.height, 2.5)
-        time.sleep(2.5 + 0.3)
+        time.sleep(5 + 0.3)
         time.sleep(args.hover)
         commander.land(0.0, 2.5)
         time.sleep(2.5 + 0.3)

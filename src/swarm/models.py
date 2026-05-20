@@ -8,8 +8,13 @@ from typing import Literal
 
 Vec3 = tuple[float, float, float]
 
+MIN_EXECUTION_SWARM_SIZE = 1
 MIN_SWARM_SIZE = 3
-MAX_SWARM_SIZE = 5
+DEFAULT_SWARM_SIZE = 5
+MAX_SWARM_SIZE = 10
+CRAZY_PINWHEEL_SWARM_SIZE = 10
+DEFAULT_CRAZY_PINWHEEL_OUTER_DELTA_M = 0.25
+DEFAULT_MIN_SEPARATION_M = 0.10
 
 
 class MissionState(str, Enum):
@@ -37,7 +42,7 @@ class HealthThresholds:
     """Minimum health needed before a drone can be selected."""
 
     min_voltage: float = 3.75
-    min_battery_percent: int = 25
+    min_battery_percent: float = 12.5
     min_connection_quality: int = 70
     health_timeout_s: float = 40.0
     estimator_timeout_s: float = 5.0
@@ -107,12 +112,12 @@ class MissionSpec:
     without touching executor internals.
     """
 
-    swarm_size: int = MAX_SWARM_SIZE
+    swarm_size: int = DEFAULT_SWARM_SIZE
     formation: Literal["line", "triangle", "diamond", "v"] = "triangle"
-    pattern: Literal["line_shift", "square", "hold", "up_forward", "captured_path", "crazy_pinwheel"] = "up_forward"
+    pattern: Literal["line_shift", "square", "hold", "up_forward", "launch_up", "captured_path", "crazy_pinwheel"] = "up_forward"
     final_pose: Vec3 = (0.50, 0.0, 0.55)
     slot_spacing_m: float = 0.49
-    min_separation_m: float = 0.10
+    min_separation_m: float = DEFAULT_MIN_SEPARATION_M
     enable_collision_avoidance: bool = True
     no_fly_zone_paths: tuple[str, ...] = ()
     captured_path: str | None = None
@@ -122,7 +127,7 @@ class MissionSpec:
     move_s: float = 4.0
     pattern_s: float = 3.0
     hold_s: float = 3.0
-    landing_settle_s: float = 0.5
+    landing_settle_s: float = 0.25
     land_s: float = 3.0
     dry_run: bool = True
     arm: bool = False
@@ -130,12 +135,17 @@ class MissionSpec:
     denied_uris: tuple[str, ...] = ()
     health_timeout_s: float = 40.0
     max_concurrent_checks: int = 1
+    crazy_pinwheel_outer_delta_m: float = DEFAULT_CRAZY_PINWHEEL_OUTER_DELTA_M
     callback_url: str | None = None
     metadata: dict = field(default_factory=dict)
 
     def validate(self) -> None:
-        if not MIN_SWARM_SIZE <= self.swarm_size <= MAX_SWARM_SIZE:
-            raise ValueError(f"swarm_size must be {MIN_SWARM_SIZE}..{MAX_SWARM_SIZE}")
+        if not MIN_EXECUTION_SWARM_SIZE <= self.swarm_size <= MAX_SWARM_SIZE:
+            raise ValueError(f"swarm_size must be {MIN_EXECUTION_SWARM_SIZE}..{MAX_SWARM_SIZE}")
+        if self.pattern == "crazy_pinwheel" and self.swarm_size != CRAZY_PINWHEEL_SWARM_SIZE:
+            raise ValueError(f"crazy_pinwheel requires swarm_size={CRAZY_PINWHEEL_SWARM_SIZE}")
+        if self.pattern == "crazy_pinwheel" and self.crazy_pinwheel_outer_delta_m <= 0:
+            raise ValueError("crazy_pinwheel_outer_delta_m must be positive")
         if self.slot_spacing_m <= 0:
             raise ValueError("slot_spacing_m must be positive")
         if self.min_separation_m <= 0:

@@ -13,6 +13,7 @@ from typing import Protocol
 
 from src.swarm.health import cache_dir_for_uri
 from src.swarm.models import HealthThresholds
+from src.swarm.models import MIN_EXECUTION_SWARM_SIZE
 from src.swarm.models import MIN_SWARM_SIZE
 from src.swarm.models import MissionSpec
 from src.swarm.planner import DronePlan
@@ -551,6 +552,7 @@ class SwarmExecutor:
             if self._emergency_stop.is_set():
                 raise RuntimeError("emergency_stop_requested")
             plan = _replan_for_remaining(plan, connections, "configure")
+            green_blinks = _start_ready_led_blinks(connections)
             logger.info("swarm executor: all drones configured + armed, ready to deploy")
             _notify_phase(
                 phase_callback,
@@ -582,7 +584,9 @@ class SwarmExecutor:
             self._set_active_connections(connections)
             _stop_led_blinks(green_blinks)
             green_blinks = []
-            self._refresh_launch_authorization(connections)
+            connections = self._refresh_launch_authorization(connections)
+            self._set_active_connections(connections)
+            plan = _replan_for_remaining(plan, connections, "launch_authorization")
             for connection in connections:
                 if hasattr(connection, "set_led_blue"):
                     connection.set_led_blue()  # type: ignore[attr-defined]
@@ -659,7 +663,6 @@ class SwarmExecutor:
 
         connector = connector or self.connector
         by_uri: dict[str, DroneConnection] = {}
-        green_blinks: list[tuple[threading.Event, threading.Thread]] = []
         lock = threading.Lock()
 
         def runner(drone: DronePlan) -> None:
@@ -667,11 +670,8 @@ class SwarmExecutor:
             logger.info("swarm executor: connecting %s", drone.uri)
             try:
                 connection = connector.connect(drone.uri, plan.spec)
-                green_blink = _start_led_blink(connection, drone.uri, "green")
                 with lock:
                     by_uri[drone.uri] = connection
-                    if green_blink is not None:
-                        green_blinks.append(green_blink)
                     self._set_active_connections([by_uri[item.uri] for item in plan.drones if item.uri in by_uri])
                 logger.info("swarm executor: connected %s in %.2fs", drone.uri, time.monotonic() - t0)
             except BaseException as exc:
@@ -682,7 +682,7 @@ class SwarmExecutor:
             thread.start()
         for thread in threads:
             thread.join()
-        return [by_uri[drone.uri] for drone in plan.drones if drone.uri in by_uri], green_blinks
+        return [by_uri[drone.uri] for drone in plan.drones if drone.uri in by_uri], []
 
     def _configure_in_parallel(self, connections: list[DroneConnection]) -> list[DroneConnection]:
         """Run per-drone configure() concurrently; tolerate fakes without one."""
@@ -709,36 +709,37 @@ class SwarmExecutor:
             thread.join()
         failed = [conn for conn in configurable if conn not in configured]
         for conn in failed:
-            try:
-                conn.close()
-            except Exception:
-                pass
+            _land_stop_and_close(conn)
         return [conn for conn in connections if conn in configured or conn not in configurable]
 
-    def _refresh_launch_authorization(self, connections: list[DroneConnection]) -> None:
+    def _refresh_launch_authorization(self, connections: list[DroneConnection]) -> list[DroneConnection]:
         refreshable = [conn for conn in connections if hasattr(conn, "refresh_launch_authorization")]
         if not refreshable:
-            return
+            return connections
 
         logger.info("swarm executor: refreshing launch authorization on %d drones", len(refreshable))
-        errors: list[BaseException] = []
+        authorized: list[DroneConnection] = []
+        failed: list[DroneConnection] = []
         lock = threading.Lock()
 
         def runner(conn: DroneConnection) -> None:
             try:
                 conn.refresh_launch_authorization()  # type: ignore[attr-defined]
+                with lock:
+                    authorized.append(conn)
             except BaseException as exc:
                 logger.exception("swarm executor: %s launch authorization refresh failed: %s", conn.uri, exc)
                 with lock:
-                    errors.append(exc)
+                    failed.append(conn)
 
         threads = [threading.Thread(target=runner, args=(conn,), name=f"arm-{conn.uri}") for conn in refreshable]
         for thread in threads:
             thread.start()
         for thread in threads:
             thread.join()
-        if errors:
-            raise RuntimeError("launch authorization refresh failed") from errors[0]
+        for conn in failed:
+            _land_stop_and_close(conn)
+        return [conn for conn in connections if conn in authorized or conn not in refreshable]
 
     def stop_all(self, connections: list[DroneConnection]) -> None:
         for connection in connections:
@@ -882,6 +883,10 @@ class SwarmExecutor:
                 events.append(f"{uri}:emergency_stop")
                 return events
             if not note_battery_watch_landed():
+                if spec.pattern == "launch_up" and hasattr(connection, "set_led_blue"):
+                    connection.set_led_blue()  # type: ignore[attr-defined]
+                    events.append(f"{uri}:led_blue")
+                    logger.info("swarm executor: %s LED blue before land", uri)
                 commander.land(0.0, spec.land_s, yaw=None)
                 events.append(f"{uri}:land")
                 _sleep_until(schedule.land_at + spec.land_s)
@@ -931,7 +936,7 @@ def _notify_phase(callback: PhaseCallback | None, phase: str, details: dict | No
 def _in_flight_blink_style(spec: MissionSpec, drone_index: int) -> tuple[str, float]:
     if spec.pattern != "crazy_pinwheel":
         return "blue", 0.0
-    colors = ("cyan", "purple", "yellow", "blue", "green")
+    colors = ("cyan", "purple", "yellow", "blue", "green", "red", "orange", "cyan", "purple", "yellow")
     return colors[drone_index % len(colors)], drone_index * 0.17
 
 
@@ -971,6 +976,15 @@ def _start_led_blink(
     return stop, thread
 
 
+def _start_ready_led_blinks(connections: list[DroneConnection]) -> list[tuple[threading.Event, threading.Thread]]:
+    blinks: list[tuple[threading.Event, threading.Thread]] = []
+    for connection in connections:
+        blink = _start_led_blink(connection, connection.uri, "green")
+        if blink is not None:
+            blinks.append(blink)
+    return blinks
+
+
 def _replace_led_blink(
     current: tuple[threading.Event, threading.Thread] | None,
     connection: DroneConnection,
@@ -1008,8 +1022,24 @@ def _start_battery_watch(
         connection.start_battery_watch()  # type: ignore[attr-defined]
 
 
+def _land_stop_and_close(connection: DroneConnection) -> None:
+    try:
+        connection.commander.land(0.0, 1.0, yaw=None)
+    except Exception:
+        pass
+    time.sleep(1.0)
+    try:
+        connection.commander.stop()
+    except Exception:
+        pass
+    try:
+        connection.close()
+    except Exception:
+        pass
+
+
 def _replan_for_remaining(plan: SwarmPlan, connections: list[DroneConnection], phase: str) -> SwarmPlan:
-    minimum_size = _minimum_viable_swarm_size(plan.spec.swarm_size)
+    minimum_size = _minimum_viable_swarm_size(plan.spec.swarm_size, plan.spec.pattern)
     if len(connections) < minimum_size:
         raise RuntimeError(
             f"{phase}_quorum_lost: {len(connections)} of {plan.spec.swarm_size} drones remain; "
@@ -1029,7 +1059,11 @@ def _replan_for_remaining(plan: SwarmPlan, connections: list[DroneConnection], p
     return build_swarm_plan(remaining_launches, reduced_spec)
 
 
-def _minimum_viable_swarm_size(requested_size: int) -> int:
+def _minimum_viable_swarm_size(requested_size: int, pattern: str = "") -> int:
+    if pattern == "crazy_pinwheel":
+        return requested_size
+    if requested_size <= 2:
+        return MIN_EXECUTION_SWARM_SIZE
     return max(MIN_SWARM_SIZE, requested_size // 2 + 1)
 
 

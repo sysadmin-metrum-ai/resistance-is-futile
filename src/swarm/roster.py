@@ -7,16 +7,21 @@ import os
 from src.swarm.health import normalize_uri
 from src.swarm.models import DroneCandidate
 from src.swarm.models import DroneHealth
+from src.swarm.models import MIN_EXECUTION_SWARM_SIZE
 from src.swarm.models import MAX_SWARM_SIZE
-from src.swarm.models import MIN_SWARM_SIZE
 from src.swarm.models import MissionSpec
 from src.swarm.models import SwarmSelection
 
 DEFAULT_DISCOVERY_URI_PREFIX = "radio://0/80/2M/E7E7E7E7"
 DEFAULT_DISCOVERY_COUNT = 9
 DEFAULT_DISCOVERY_FLEET = (
-    *(f"radio://0/80/2M/E7E7E7E7{index:02d}" for index in range(0, 5)),
-    *(f"radio://1/90/2M/E7E7E7E7{index:02d}" for index in range(5, 10)),
+    "radio://0/80/2M/E7E7E7E701",
+    "radio://0/80/2M/E7E7E7E700",
+    "radio://1/90/2M/E7E7E7E709",
+)
+DEFAULT_FULL_FLEET = tuple(
+    [*(f"radio://0/80/2M/E7E7E7E7{index:02d}" for index in range(0, 5)),
+     *(f"radio://1/90/2M/E7E7E7E7{index:02d}" for index in range(5, 10))]
 )
 
 
@@ -89,11 +94,11 @@ def select_healthiest_swarm(
 ) -> SwarmSelection:
     """Select the highest scoring ready drones, allowing degraded geometry."""
 
-    if not MIN_SWARM_SIZE <= swarm_size <= MAX_SWARM_SIZE:
-        raise ValueError(f"swarm_size must be {MIN_SWARM_SIZE}..{MAX_SWARM_SIZE}")
+    if not MIN_EXECUTION_SWARM_SIZE <= swarm_size <= MAX_SWARM_SIZE:
+        raise ValueError(f"swarm_size must be {MIN_EXECUTION_SWARM_SIZE}..{MAX_SWARM_SIZE}")
     required_size = minimum_size if minimum_size is not None else swarm_size
-    if required_size < MIN_SWARM_SIZE or required_size > swarm_size:
-        raise ValueError("minimum_size must be between MIN_SWARM_SIZE and swarm_size")
+    if required_size < MIN_EXECUTION_SWARM_SIZE or required_size > swarm_size:
+        raise ValueError("minimum_size must be between MIN_EXECUTION_SWARM_SIZE and swarm_size")
 
     ready = sorted((item for item in health if item.ready), key=lambda item: item.score, reverse=True)
     selected_size = min(swarm_size, len(ready))

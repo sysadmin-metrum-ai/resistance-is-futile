@@ -1,6 +1,8 @@
 import asyncio
 from dataclasses import replace
 
+import pytest
+
 from src.swarm.executor import ExecutionResult
 from src.swarm.models import DroneCandidate
 from src.swarm.models import DroneHealth
@@ -17,15 +19,19 @@ class CountingProbe:
         missing_pose: set[str] | None = None,
         low_voltage: set[str] | None = None,
         low_battery_percent: set[str] | None = None,
+        poses: dict[str, tuple[float, float, float]] | None = None,
     ):
         self.calls: list[str] = []
         self.unhealthy = unhealthy or set()
         self.missing_pose = missing_pose or set()
         self.low_voltage = low_voltage or set()
         self.low_battery_percent = low_battery_percent or set()
+        self.poses = poses or {}
+        self.thresholds_seen: list[HealthThresholds] = []
 
     def check(self, candidate: DroneCandidate, thresholds: HealthThresholds) -> DroneHealth:
         self.calls.append(candidate.uri)
+        self.thresholds_seen.append(thresholds)
         y = float(candidate.uri[-1]) * 0.45
         reasons = []
         if candidate.uri in self.unhealthy:
@@ -35,6 +41,7 @@ class CountingProbe:
         if candidate.uri in self.low_battery_percent:
             reasons.append("low_battery_percent")
         ready = not reasons
+        pose = self.poses.get(candidate.uri, (0.0, y, 0.0))
         return DroneHealth(
             uri=candidate.uri,
             ready=ready,
@@ -46,7 +53,7 @@ class CountingProbe:
             battery_pass=True,
             estimator_ready=ready,
             lighthouse_ready=ready,
-            pose=None if candidate.uri in self.missing_pose else (0.0, y, 0.0),
+            pose=None if candidate.uri in self.missing_pose else pose,
         )
 
 
@@ -74,6 +81,33 @@ def test_prepare_runs_health_probe_every_time():
     assert first.plan is not None
     assert second.plan is not None
     assert probe.calls == ["drone-0", "drone-1", "drone-2"] * 2
+
+
+def test_prepare_fixed_pair_degrades_to_one_healthy_drone():
+    probe = CountingProbe(unhealthy={"drone-9"})
+    runner = SwarmSessionRunner(probe=probe)
+    candidates = [DroneCandidate("drone-4"), DroneCandidate("drone-9")]
+    spec = MissionSpec(swarm_size=2, no_fly_zone_paths=())
+
+    result = asyncio.run(runner.prepare(spec, candidates))
+
+    assert result.plan is not None
+    assert result.plan.spec.swarm_size == 1
+    assert [item.uri for item in result.selection.selected] == ["drone-4"]
+    assert [item.uri for item in result.selection.rejected] == ["drone-9"]
+
+
+def test_prepare_fixed_pair_refuses_when_both_drones_fail():
+    probe = CountingProbe(unhealthy={"drone-4", "drone-9"})
+    runner = SwarmSessionRunner(probe=probe)
+    candidates = [DroneCandidate("drone-4"), DroneCandidate("drone-9")]
+    spec = MissionSpec(swarm_size=2, no_fly_zone_paths=())
+
+    result = asyncio.run(runner.prepare(spec, candidates))
+
+    assert result.plan is None
+    assert result.message == "insufficient_healthy_drones"
+    assert result.selection.selected == ()
 
 
 def test_prepare_degrades_to_four_when_one_drone_is_unhealthy():
@@ -105,6 +139,46 @@ def test_prepare_rejects_missing_pose_and_uses_remaining_drones():
     assert "missing_pose" in rejected.reasons
 
 
+@pytest.mark.skip(reason="No-fly-zone launch rejection is disabled until the server geofence is used in demos.")
+def test_prepare_rejects_launch_pose_inside_no_fly_zone_and_uses_remaining_drones(tmp_path):
+    no_fly_zone = tmp_path / "server_box.json"
+    no_fly_zone.write_text(
+        """
+{
+  "name": "server",
+  "min": [-0.1, -0.1, -0.1],
+  "max": [0.1, 0.1, 0.1],
+  "margin": 0.05
+}
+""".strip()
+    )
+    probe = CountingProbe(
+        poses={
+            "drone-0": (0.0, 0.0, 0.0),
+            "drone-1": (0.0, 1.0, 0.0),
+            "drone-2": (0.0, 2.0, 0.0),
+            "drone-3": (0.0, 3.0, 0.0),
+            "drone-4": (0.0, 4.0, 0.0),
+        }
+    )
+    runner = SwarmSessionRunner(probe=probe)
+    candidates = [DroneCandidate(f"drone-{index}") for index in range(5)]
+    spec = MissionSpec(
+        swarm_size=4,
+        formation="line",
+        final_pose=(1.0, 2.5, 0.55),
+        no_fly_zone_paths=(str(no_fly_zone),),
+    )
+
+    result = asyncio.run(runner.prepare(spec, candidates))
+
+    assert result.plan is not None
+    assert [item.uri for item in result.selection.selected] == ["drone-1", "drone-2", "drone-3", "drone-4"]
+    rejected = result.selection.rejected[0]
+    assert rejected.uri == "drone-0"
+    assert "launch_pose_in_no_fly_zone:server" in rejected.reasons
+
+
 def test_prepare_refuses_when_majority_of_five_drones_fail():
     probe = CountingProbe(unhealthy={"drone-2", "drone-3", "drone-4"})
     runner = SwarmSessionRunner(probe=probe)
@@ -130,7 +204,49 @@ def test_prepare_checks_all_candidates_and_chooses_healthiest_five():
     assert result.plan.spec.swarm_size == 5
     assert result.message == "prepared"
     assert [item.uri for item in result.selection.selected] == [f"drone-{index}" for index in range(3, 8)]
-    assert probe.calls == [f"drone-{index}" for index in range(10)]
+    assert sorted(probe.calls) == [f"drone-{index}" for index in range(10)]
+
+
+def test_prepare_uses_alternate_healthy_subset_when_top_five_are_unsafe():
+    probe = CountingProbe(
+        poses={
+            "drone-0": (0.0, 0.0, 0.0),
+            "drone-1": (0.0, 0.20, 0.0),
+            "drone-2": (0.0, 0.40, 0.0),
+            "drone-3": (0.0, 0.60, 0.0),
+            "drone-4": (0.0, 0.13, 0.0),
+            "drone-5": (0.0, 0.80, 0.0),
+        }
+    )
+    runner = SwarmSessionRunner(probe=probe)
+    candidates = [DroneCandidate(f"drone-{index}") for index in range(6)]
+    spec = MissionSpec(swarm_size=5, pattern="hold", min_separation_m=0.15, no_fly_zone_paths=())
+
+    result = asyncio.run(runner.prepare(spec, candidates))
+
+    assert result.plan is not None
+    assert result.message == "prepared"
+    assert len(result.selection.selected) == 5
+    assert "drone-4" not in [item.uri for item in result.selection.selected]
+    assert "drone-5" in [item.uri for item in result.selection.selected]
+
+
+def test_prepare_uses_spec_health_check_concurrency():
+    probe = CountingProbe()
+    runner = SwarmSessionRunner(probe=probe)
+    candidates = [DroneCandidate(f"drone-{index}") for index in range(3)]
+    spec = MissionSpec(
+        swarm_size=3,
+        no_fly_zone_paths=(),
+        health_timeout_s=8.0,
+        max_concurrent_checks=2,
+    )
+
+    result = asyncio.run(runner.prepare(spec, candidates))
+
+    assert result.plan is not None
+    assert {threshold.health_timeout_s for threshold in probe.thresholds_seen} == {8.0}
+    assert {threshold.max_concurrent_checks for threshold in probe.thresholds_seen} == {2}
 
 
 def test_prepare_degrades_global_candidate_pool_to_four():

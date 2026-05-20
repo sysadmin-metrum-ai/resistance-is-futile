@@ -17,12 +17,16 @@ from pydantic import BaseModel, Field
 from src.core.config import get_settings
 from src.swarm.health import CflibHealthProbe
 from src.swarm.health import check_candidates_concurrently
+from src.swarm.models import DEFAULT_MIN_SEPARATION_M
 from src.swarm.models import DroneCandidate
 from src.swarm.models import HealthThresholds
+from src.swarm.models import CRAZY_PINWHEEL_SWARM_SIZE
+from src.swarm.models import DEFAULT_SWARM_SIZE
 from src.swarm.models import MAX_SWARM_SIZE
 from src.swarm.models import MIN_SWARM_SIZE
 from src.swarm.models import MissionSpec
 from src.swarm.roster import DEFAULT_DISCOVERY_FLEET
+from src.swarm.roster import DEFAULT_FULL_FLEET
 from src.swarm.service import SwarmDeployService
 from src.swarm.service import get_swarm_deploy_service
 
@@ -30,6 +34,7 @@ router = APIRouter()
 dtw_router = APIRouter()
 _DRONE_ESTIMATED_DURATION_SECONDS = 30
 _EMERGENCY_LAND_URIS = DEFAULT_DISCOVERY_FLEET
+_DTW_TRIGGER_URIS = ("radio://0/80/2M/E7E7E7E704", "radio://1/90/2M/E7E7E7E709")
 _PROJECT_ROOT = Path(__file__).resolve().parents[3]
 _DEFAULT_CAPTURED_PATH = _PROJECT_ROOT / "config/demo_path.json"
 _dtw_sequences: dict[str, dict] = {}
@@ -39,24 +44,24 @@ DronePhase = Literal["preflight", "health_failed", "ready_to_deploy", "taking_of
 class SwarmDeployRequest(BaseModel):
     """One deploy-style request for a full 3-5 drone swarm mission."""
 
-    swarm_size: int = Field(MAX_SWARM_SIZE, ge=MIN_SWARM_SIZE, le=MAX_SWARM_SIZE)
+    swarm_size: int = Field(DEFAULT_SWARM_SIZE, ge=MIN_SWARM_SIZE, le=MAX_SWARM_SIZE)
     formation: Literal["line", "triangle", "diamond", "v"] = "triangle"
-    pattern: Literal["line_shift", "square", "hold", "up_forward", "captured_path", "crazy_pinwheel"] = "up_forward"
+    pattern: Literal["line_shift", "square", "hold", "up_forward", "launch_up", "captured_path", "crazy_pinwheel"] = "up_forward"
     final_pose: tuple[float, float, float] = (0.50, 0.0, 0.55)
     slot_spacing_m: float = Field(0.49, gt=0)
-    min_separation_m: float = Field(0.10, gt=0)
+    min_separation_m: float = Field(DEFAULT_MIN_SEPARATION_M, gt=0)
     enable_collision_avoidance: bool = True
     no_fly_zone_paths: tuple[str, ...] = ()
     captured_path: str | None = None
     yaw_rad: float = 0.0
     hover_z: float = Field(0.55, gt=0)
-    landing_settle_s: float = Field(0.5, ge=0)
+    landing_settle_s: float = Field(0.25, ge=0)
     dry_run: bool = True
     arm: bool = False
     allowed_uris: tuple[str, ...] = ()
     denied_uris: tuple[str, ...] = ()
     health_timeout_s: float = Field(40.0, gt=0)
-    max_concurrent_checks: int = Field(1, ge=1, le=5)
+    max_concurrent_checks: int = Field(1, ge=1, le=MAX_SWARM_SIZE)
     callback_url: str | None = Field(None, description="Optional infra callback URL for terminal deploy status")
 
     def to_spec(self) -> MissionSpec:
@@ -107,7 +112,7 @@ class SwarmDeployResponse(BaseModel):
 class SwarmHealthRequest(BaseModel):
     allowed_uris: tuple[str, ...] = DEFAULT_DISCOVERY_FLEET
     health_timeout_s: float = Field(40.0, gt=0)
-    max_concurrent_checks: int = Field(1, ge=1, le=5)
+    max_concurrent_checks: int = Field(1, ge=1, le=MAX_SWARM_SIZE)
 
 
 class SwarmHealthResponse(BaseModel):
@@ -298,6 +303,21 @@ async def trigger_drone(
     )
 
 
+@dtw_router.get("/drone/battery", response_model=SwarmHealthResponse)
+async def get_demo_drone_battery(
+    x_api_key: str = Header(None, alias="X-API-Key"),
+):
+    """Live health/battery snapshot for the fixed demo drones."""
+    verify_api_key(x_api_key)
+    thresholds = HealthThresholds(health_timeout_s=10.0, max_concurrent_checks=len(_DTW_TRIGGER_URIS))
+    results = await check_candidates_concurrently(
+        [DroneCandidate(uri=uri) for uri in _DTW_TRIGGER_URIS],
+        probe=CflibHealthProbe(),
+        thresholds=thresholds,
+    )
+    return SwarmHealthResponse(results=[result.to_dict() for result in results])
+
+
 @dtw_router.post("/drone/crazy-trigger", response_model=DroneTriggerResponse)
 async def trigger_crazy_drone(
     service: SwarmDeployService = Depends(get_service),
@@ -398,7 +418,11 @@ async def _run_dtw_sequence(sequence_id: str, service: SwarmDeployService) -> No
         request = SwarmDeployRequest(dry_run=False, arm=True, health_timeout_s=40.0, max_concurrent_checks=5)
         if _DEFAULT_CAPTURED_PATH.exists():
             request = request.model_copy(
-                update={"pattern": "captured_path", "captured_path": str(_DEFAULT_CAPTURED_PATH)}
+                update={
+                    "pattern": "captured_path",
+                    "captured_path": str(_DEFAULT_CAPTURED_PATH),
+                    "final_pose": (0.6, 0.6, 0.5),
+                }
             )
         result = await service.prepare_for_launch(request.to_spec())
         _dtw_sequences[sequence_id].update(
@@ -413,10 +437,12 @@ async def _run_dtw_sequence(sequence_id: str, service: SwarmDeployService) -> No
 async def _run_crazy_dtw_sequence(sequence_id: str, service: SwarmDeployService) -> None:
     try:
         spec = MissionSpec(
+            swarm_size=CRAZY_PINWHEEL_SWARM_SIZE,
             dry_run=False,
             arm=True,
             health_timeout_s=40.0,
-            max_concurrent_checks=5,
+            max_concurrent_checks=CRAZY_PINWHEEL_SWARM_SIZE,
+            allowed_uris=DEFAULT_FULL_FLEET,
             formation="diamond",
             pattern="crazy_pinwheel",
             final_pose=(0.45, 0.0, 0.62),

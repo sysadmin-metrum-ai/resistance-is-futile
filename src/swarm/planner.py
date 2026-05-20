@@ -6,16 +6,23 @@ import itertools
 import json
 import math
 from dataclasses import dataclass
+from typing import Literal
 from functools import lru_cache
 from pathlib import Path
 
 from src.safety.geofence import GeofenceBox
 from src.safety.geofence import load_box
 from src.swarm.assignment import distance3
+from src.swarm.assignment import optimal_assignment
+from src.swarm.models import CRAZY_PINWHEEL_SWARM_SIZE
 from src.swarm.models import MissionSpec
 from src.swarm.models import Vec3
 
+CRAZY_PINWHEEL_RADIUS_EPS_M = 0.05
+
 CAPTURED_RTL_XY_LANE_M = 0.15
+TAKEOFF_MIN_XY_SEPARATION_M = 0.13
+CAPTURED_MIN_PATTERN_S = 0.8
 
 
 @dataclass(frozen=True)
@@ -48,7 +55,11 @@ def formation_slots(spec: MissionSpec) -> list[Vec3]:
     spacing = spec.slot_spacing_m
     n = spec.swarm_size
 
-    if spec.formation == "line":
+    if spec.pattern == "crazy_pinwheel":
+        if n != CRAZY_PINWHEEL_SWARM_SIZE:
+            raise ValueError(f"crazy_pinwheel requires swarm_size={CRAZY_PINWHEEL_SWARM_SIZE}")
+        offsets = _crazy_pinwheel_offsets(spacing, spec.crazy_pinwheel_outer_delta_m)
+    elif spec.formation == "line":
         offsets = [(0.0, (i - (n - 1) / 2.0) * spacing, 0.0) for i in range(n)]
     elif spec.formation == "triangle":
         offsets = _triangle_offsets(n, spacing)
@@ -71,6 +82,14 @@ def build_swarm_plan(uri_to_launch: dict[str, Vec3], spec: MissionSpec) -> Swarm
     spec.validate()
     if len(uri_to_launch) != spec.swarm_size:
         raise ValueError("launch pose count must match swarm_size")
+    if spec.pattern == "launch_up":
+        plan = SwarmPlan(
+            spec=spec,
+            drones=tuple(_launch_up_drone_plan(uri, launch, spec) for uri, launch in uri_to_launch.items()),
+            assignment_cost=0.0,
+        )
+        validate_swarm_plan_clearance(plan, no_fly_zones=load_no_fly_zones(spec.no_fly_zone_paths))
+        return plan
 
     uris = list(uri_to_launch.keys())
     launches = [uri_to_launch[uri] for uri in uris]
@@ -78,7 +97,7 @@ def build_swarm_plan(uri_to_launch: dict[str, Vec3], spec: MissionSpec) -> Swarm
     no_fly_zones = load_no_fly_zones(spec.no_fly_zone_paths)
     unsafe_reason: PathSafetyError | None = None
     no_fly_reason: PathSafetyError | None = None
-    for assignment, cost in _ranked_assignments(launches, slots):
+    for assignment, cost in _ranked_assignments(launches, slots, spec):
         try:
             plan = SwarmPlan(
                 spec=spec,
@@ -108,7 +127,15 @@ def load_no_fly_zones(paths: tuple[str, ...]) -> tuple[GeofenceBox, ...]:
     return tuple(boxes)
 
 
-def _ranked_assignments(measured: list[Vec3], targets: list[Vec3]) -> list[tuple[tuple[int, ...], float]]:
+def _ranked_assignments(
+    measured: list[Vec3],
+    targets: list[Vec3],
+    spec: MissionSpec,
+) -> list[tuple[tuple[int, ...], float]]:
+    if spec.pattern == "crazy_pinwheel":
+        assignment, cost = _crazy_pinwheel_assignment(measured, targets, spec)
+        return [(tuple(assignment), cost)]
+
     ranked: list[tuple[tuple[int, ...], float]] = []
     for perm in itertools.permutations(range(len(targets))):
         cost = sum(distance3(measured[i], targets[perm[i]]) for i in range(len(measured)))
@@ -123,9 +150,23 @@ def _drone_plan(uri: str, launch: Vec3, slot: Vec3, spec: MissionSpec, zones: tu
         uri=uri,
         launch=launch,
         formation_slot=slot,
-        route_to_formation=_route_between(launch, slot, spec, zones),
+        route_to_formation=_route_between(return_point, slot, spec, zones),
         pattern_points=pattern_points,
         route_to_return=_route_to_return(slot, pattern_points, return_point, spec, zones),
+        return_point=return_point,
+    )
+
+
+def _launch_up_drone_plan(uri: str, launch: Vec3, spec: MissionSpec) -> DronePlan:
+    return_point = (launch[0], launch[1], spec.hover_z)
+    high_point = (launch[0], launch[1], spec.final_pose[2])
+    return DronePlan(
+        uri=uri,
+        launch=launch,
+        formation_slot=return_point,
+        route_to_formation=(),
+        pattern_points=(high_point,),
+        route_to_return=(return_point,),
         return_point=return_point,
     )
 
@@ -147,7 +188,7 @@ def _route_to_return(
 
 def validate_swarm_plan_clearance(
     plan: SwarmPlan,
-    samples_per_segment: int = 25,
+    samples_per_segment: int = 100,
     no_fly_zones: tuple[GeofenceBox, ...] = (),
 ) -> None:
     """Verify all simultaneous path samples keep the requested clearance.
@@ -164,23 +205,32 @@ def validate_swarm_plan_clearance(
     segment_count = len(timelines[0]) - 1
 
     for segment_ix in range(segment_count):
-        for sample_ix in range(samples_per_segment + 1):
+        min_separation_m = _segment_min_separation(plan.spec, segment_ix)
+        first_sample_ix = 0 if segment_ix == 0 else 1
+        for sample_ix in range(first_sample_ix, samples_per_segment + 1):
             t = sample_ix / samples_per_segment
             points = [
                 _lerp(timeline[segment_ix], timeline[segment_ix + 1], t)
                 for timeline in timelines
             ]
-            _assert_min_distance(points, plan.spec.min_separation_m, f"segment_{segment_ix}")
+            _assert_min_distance(points, min_separation_m, f"segment_{segment_ix}")
             _assert_clear_of_no_fly_zones(points, no_fly_zones, f"segment_{segment_ix}")
 
 
 def _timeline(drone: DronePlan) -> list[Vec3]:
     return [
         drone.launch,
+        drone.return_point,
         *drone.route_to_formation,
         *drone.pattern_points,
         *drone.route_to_return,
     ]
+
+
+def _segment_min_separation(spec: MissionSpec, segment_ix: int) -> float:
+    if segment_ix == 0:
+        return min(spec.min_separation_m, TAKEOFF_MIN_XY_SEPARATION_M)
+    return spec.min_separation_m
 
 
 def _padded_timelines(timelines: list[list[Vec3]]) -> list[list[Vec3]]:
@@ -262,11 +312,15 @@ def _route_distance(start: Vec3, route: tuple[Vec3, ...]) -> float:
 def _assert_min_distance(points: list[Vec3], min_distance: float, phase: str) -> None:
     for i, first in enumerate(points):
         for j, second in enumerate(points[i + 1 :], start=i + 1):
-            dist = distance3(first, second)
+            dist = _distance_xy(first, second)
             if dist < min_distance:
                 raise PathSafetyError(
-                    f"{phase}: drones {i} and {j} clearance {dist:.3f}m < {min_distance:.3f}m"
+                    f"{phase}: drones {i} and {j} xy clearance {dist:.3f}m < {min_distance:.3f}m"
                 )
+
+
+def _distance_xy(a: Vec3, b: Vec3) -> float:
+    return ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2) ** 0.5
 
 
 def _assert_clear_of_no_fly_zones(points: list[Vec3], zones: tuple[GeofenceBox, ...], phase: str) -> None:
@@ -289,6 +343,8 @@ def _pattern_points(slot: Vec3, spec: MissionSpec) -> tuple[Vec3, ...]:
         # Each drone steps +1m forward (X) and +1m up (Z) from its slot,
         # holds, then comes back to the slot before returning to launch.
         return ((x + 1.0, y, z + 1.0), slot)
+    if spec.pattern == "launch_up":
+        return ((x, y, spec.final_pose[2]), slot)
     if spec.pattern == "crazy_pinwheel":
         return _crazy_pinwheel_points(slot, spec)
     if spec.pattern == "captured_path":
@@ -297,38 +353,92 @@ def _pattern_points(slot: Vec3, spec: MissionSpec) -> tuple[Vec3, ...]:
         start_yaw = formation_yaw(spec)
         points: list[Vec3] = []
         relative_points = _captured_relative_points(spec)
-        for (dx, dy, dz), yaw in zip(relative_points, pattern_yaws(spec, len(relative_points))):
-            rotated_offset = _rotate_offset(slot_offset, yaw - start_yaw)
-            points.append(
-                (
-                    center[0] + dx + rotated_offset[0],
-                    center[1] + dy + rotated_offset[1],
-                    center[2] + dz + rotated_offset[2],
-                )
-            )
+        previous_yaw = start_yaw
+        for (dx, dy, dz), yaw in zip(relative_points, _captured_yaws_for_relative_points(spec)):
+            path_center = (center[0] + dx, center[1] + dy, center[2] + dz)
+            points.append(_captured_offset_point(path_center, slot_offset, previous_yaw, start_yaw))
+            if abs(yaw - previous_yaw) > 1e-6:
+                points.append(_captured_offset_point(path_center, slot_offset, yaw, start_yaw))
+            previous_yaw = yaw
         return tuple(points)
     raise ValueError(f"unsupported pattern: {spec.pattern}")
 
 
 def _crazy_pinwheel_points(slot: Vec3, spec: MissionSpec) -> tuple[Vec3, ...]:
-    cx, cy, cz = spec.final_pose
-    dx, dy, dz = slot[0] - cx, slot[1] - cy, slot[2] - cz
-    radius = math.hypot(dx, dy)
-    if radius < 0.05:
+    tier = _crazy_pinwheel_tier(slot, spec)
+    if tier == "center":
         return (
             (slot[0], slot[1], slot[2] + 0.22),
             (slot[0], slot[1], slot[2] + 0.34),
             (slot[0], slot[1], slot[2] + 0.22),
             slot,
         )
+    if tier == "middle":
+        return _crazy_pinwheel_orbit(slot, spec, steps=4, z_lift_angles={math.pi / 2.0, math.pi * 1.5})
+    if tier == "outer":
+        return _crazy_pinwheel_orbit(slot, spec, steps=5, z_lift_angles=set())
+    raise ValueError(f"crazy_pinwheel slot not on a known ring: {slot}")
 
+
+def _crazy_pinwheel_orbit(
+    slot: Vec3,
+    spec: MissionSpec,
+    *,
+    steps: int,
+    z_lift_angles: set[float],
+) -> tuple[Vec3, ...]:
+    cx, cy, _ = spec.final_pose
+    dx, dy, dz = slot[0] - cx, slot[1] - cy, slot[2] - spec.final_pose[2]
     points: list[Vec3] = []
-    for angle in (math.pi / 2.0, math.pi, math.pi * 1.5, math.pi * 2.0):
+    for step in range(1, steps + 1):
+        angle = step * (2.0 * math.pi / steps)
         rdx, rdy, _ = _rotate_offset((dx, dy, dz), angle)
-        z_lift = 0.10 if angle in (math.pi / 2.0, math.pi * 1.5) else 0.0
+        z_lift = 0.10 if angle in z_lift_angles else 0.0
         points.append((cx + rdx, cy + rdy, slot[2] + z_lift))
     points.append(slot)
     return tuple(points)
+
+
+def _crazy_pinwheel_offsets(spacing: float, outer_delta: float) -> list[Vec3]:
+    outer_radius = spacing + outer_delta
+    middle = [
+        (spacing, 0.0, 0.0),
+        (0.0, spacing, 0.0),
+        (-spacing, 0.0, 0.0),
+        (0.0, -spacing, 0.0),
+    ]
+    outer: list[Vec3] = []
+    for index in range(5):
+        angle = math.pi / 5.0 + index * (2.0 * math.pi / 5.0)
+        outer.append((outer_radius * math.cos(angle), outer_radius * math.sin(angle), 0.0))
+    return [(0.0, 0.0, 0.0), *middle, *outer]
+
+
+def _crazy_pinwheel_tier(slot: Vec3, spec: MissionSpec) -> Literal["center", "middle", "outer"]:
+    radius = _crazy_pinwheel_xy_radius(slot, spec)
+    spacing = spec.slot_spacing_m
+    outer_radius = spacing + spec.crazy_pinwheel_outer_delta_m
+    if radius < CRAZY_PINWHEEL_RADIUS_EPS_M:
+        return "center"
+    if abs(radius - spacing) < CRAZY_PINWHEEL_RADIUS_EPS_M:
+        return "middle"
+    if abs(radius - outer_radius) < CRAZY_PINWHEEL_RADIUS_EPS_M:
+        return "outer"
+    raise ValueError(f"crazy_pinwheel slot radius {radius:.3f}m is not on a known ring")
+
+
+def _crazy_pinwheel_xy_radius(slot: Vec3, spec: MissionSpec) -> float:
+    cx, cy, _ = spec.final_pose
+    return math.hypot(slot[0] - cx, slot[1] - cy)
+
+
+def _crazy_pinwheel_assignment(
+    measured: list[Vec3],
+    targets: list[Vec3],
+    spec: MissionSpec,
+) -> tuple[list[int], float]:
+    del spec
+    return optimal_assignment(measured, targets)
 
 
 def _formation_center(spec: MissionSpec) -> Vec3:
@@ -349,10 +459,7 @@ def _captured_final_center(spec: MissionSpec) -> Vec3:
     configured = data.get("final_center")
     if isinstance(configured, list | tuple) and len(configured) == 3:
         return _vec3(configured, "final_center")
-    center = _formation_center(spec)
-    relative_points = _captured_relative_points(spec)
-    final_relative = relative_points[-1]
-    return (center[0] + final_relative[0], center[1] + final_relative[1], center[2] + final_relative[2])
+    return spec.final_pose
 
 
 def _captured_final_slot(slot: Vec3, spec: MissionSpec) -> Vec3:
@@ -380,20 +487,21 @@ def _captured_return_lane_point(final_slot: Vec3, return_point: Vec3) -> Vec3:
 
 def go_to_yaw(spec: MissionSpec) -> float:
     if spec.pattern == "captured_path" and spec.captured_path:
-        yaw = _load_captured_path(spec.captured_path).get("yaw_rad")
-        if isinstance(yaw, int | float):
-            return float(yaw)
+        yaws = _captured_yaws(spec)
+        if yaws:
+            return yaws[-1]
     return spec.yaw_rad
 
 
 def formation_yaw(spec: MissionSpec) -> float:
     if spec.pattern == "captured_path" and spec.captured_path:
-        start_yaw = _load_captured_path(spec.captured_path).get("start_yaw_rad")
+        data = _load_captured_path(spec.captured_path)
+        start_yaw = data.get("start_yaw_rad")
         if isinstance(start_yaw, int | float):
             return float(start_yaw)
-        raw_yaws = _load_captured_path(spec.captured_path).get("yaw_points_rad")
-        if isinstance(raw_yaws, list | tuple) and raw_yaws:
-            return float(raw_yaws[0])
+        yaws = _captured_yaws(spec)
+        if yaws:
+            return yaws[0]
     return go_to_yaw(spec)
 
 
@@ -401,20 +509,65 @@ def pattern_yaws(spec: MissionSpec, count: int) -> tuple[float, ...]:
     if count <= 0:
         return tuple()
     if spec.pattern == "captured_path" and spec.captured_path:
-        raw_yaws = _load_captured_path(spec.captured_path).get("yaw_points_rad")
-        if isinstance(raw_yaws, list | tuple) and raw_yaws:
-            yaws = tuple(float(yaw) for yaw in raw_yaws)
+        yaws = _captured_expanded_yaws(spec)
+        if yaws:
             if len(yaws) >= count:
                 return yaws[:count]
             return yaws + (yaws[-1],) * (count - len(yaws))
     return (go_to_yaw(spec),) * count
 
 
+def _captured_yaws_for_relative_points(spec: MissionSpec) -> tuple[float, ...]:
+    relative_points = _captured_relative_points(spec)
+    yaws = _captured_yaws(spec)
+    if not yaws:
+        return (go_to_yaw(spec),) * len(relative_points)
+    if len(yaws) >= len(relative_points):
+        return yaws[: len(relative_points)]
+    return yaws + (yaws[-1],) * (len(relative_points) - len(yaws))
+
+
+def _captured_expanded_yaws(spec: MissionSpec) -> tuple[float, ...]:
+    start_yaw = formation_yaw(spec)
+    expanded: list[float] = []
+    previous_yaw = start_yaw
+    for yaw in _captured_yaws_for_relative_points(spec):
+        expanded.append(previous_yaw)
+        if abs(yaw - previous_yaw) > 1e-6:
+            expanded.append(yaw)
+        previous_yaw = yaw
+    return tuple(expanded)
+
+
+def _captured_yaws(spec: MissionSpec) -> tuple[float, ...]:
+    data = _load_captured_path(spec.captured_path)
+    raw_yaws = data.get("yaw_points_rad")
+    if not isinstance(raw_yaws, list | tuple) or not raw_yaws:
+        yaw = data.get("yaw_rad")
+        return (float(yaw),) if isinstance(yaw, int | float) else tuple()
+    raw_start_yaw = data.get("start_yaw_rad")
+    start_yaw = float(raw_start_yaw) if isinstance(raw_start_yaw, int | float) else float(raw_yaws[0])
+    return _unwrap_yaws(tuple(float(yaw) for yaw in raw_yaws), start_yaw)
+
+
+def _unwrap_yaws(yaws: tuple[float, ...], start_yaw: float) -> tuple[float, ...]:
+    unwrapped: list[float] = []
+    previous = start_yaw
+    for yaw in yaws:
+        while yaw - previous > math.pi:
+            yaw -= math.tau
+        while yaw - previous < -math.pi:
+            yaw += math.tau
+        unwrapped.append(yaw)
+        previous = yaw
+    return tuple(unwrapped)
+
+
 def pattern_duration_s(spec: MissionSpec) -> float:
     if spec.pattern == "captured_path" and spec.captured_path:
         duration = _load_captured_path(spec.captured_path).get("pattern_s")
         if isinstance(duration, int | float) and float(duration) > 0:
-            return float(duration)
+            return max(float(duration), CAPTURED_MIN_PATTERN_S)
     return spec.pattern_s
 
 
@@ -471,9 +624,25 @@ def _rotate_offset(offset: Vec3, yaw_rad: float) -> Vec3:
     return (x * c - y * s, x * s + y * c, z)
 
 
+def _captured_offset_point(path_center: Vec3, slot_offset: Vec3, yaw: float, start_yaw: float) -> Vec3:
+    rotated_offset = _rotate_offset(slot_offset, yaw - start_yaw)
+    return (
+        path_center[0] + rotated_offset[0],
+        path_center[1] + rotated_offset[1],
+        path_center[2] + rotated_offset[2],
+    )
+
+
 def _triangle_offsets(n: int, spacing: float) -> list[Vec3]:
     top_z = spacing * 0.75
     top_x = spacing * 0.60
+    if n == 1:
+        return [(0.0, 0.0, 0.0)]
+    if n == 2:
+        return [
+            (0.0, -spacing * 0.5, 0.0),
+            (0.0, spacing * 0.5, 0.0),
+        ]
     if n == 5:
         return [
             (0.0, -spacing, 0.0),

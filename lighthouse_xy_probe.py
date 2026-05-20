@@ -1,10 +1,10 @@
-"""Single Crazyflie: tiny relative moves to see which way +X and +Y point.
+"""Single Crazyflie: relative moves forward, left, and right from origin.
 
-Sequence (all relative, same height): +X → home, −X → home, +Y → home, −Y → home, land.
+Sequence (all relative, same height): +X -> home, +Y -> home, -Y -> home, land.
 
 Usage:
     uv run python lighthouse_xy_probe.py
-    uv run python lighthouse_xy_probe.py --uri radio://0/80/2M/E7E7E7E701 --step 0.15
+    uv run python lighthouse_xy_probe.py --uri radio://0/80/2M/E7E7E7E702 --step 0.15
 """
 
 import argparse
@@ -27,7 +27,15 @@ def leg(commander, msg: str, dx: float, dy: float, move_s: float, settle: float)
     time.sleep(move_s + settle)
 
 
-def run_probe(cf, step: float, takeoff_s: float, move_s: float, settle: float, height: float, land_s: float) -> None:
+def run_probe(
+    cf,
+    step: float,
+    takeoff_s: float,
+    move_s: float,
+    settle: float,
+    height: float,
+    land_s: float,
+) -> None:
     hlc = cf.high_level_commander
     arm_if_supported(cf)
 
@@ -35,14 +43,12 @@ def run_probe(cf, step: float, takeoff_s: float, move_s: float, settle: float, h
     hlc.takeoff(height, takeoff_s, yaw=None)
     time.sleep(takeoff_s + settle)
 
-    leg(hlc, f"1/8  relative +X  +{step:.2f} m", step, 0.0, move_s, settle)
-    leg(hlc, "2/8  return  −X (back to start)", -step, 0.0, move_s, settle)
-    leg(hlc, f"3/8  relative −X  −{step:.2f} m", -step, 0.0, move_s, settle)
-    leg(hlc, "4/8  return  +X (back to start)", step, 0.0, move_s, settle)
-    leg(hlc, f"5/8  relative +Y  +{step:.2f} m", 0.0, step, move_s, settle)
-    leg(hlc, "6/8  return  −Y (back to start)", 0.0, -step, move_s, settle)
-    leg(hlc, f"7/8  relative −Y  −{step:.2f} m", 0.0, -step, move_s, settle)
-    leg(hlc, "8/8  return  +Y (back to start)", 0.0, step, move_s, settle)
+    leg(hlc, f"1/6  relative +X  +{step:.2f} m", step, 0.0, move_s, settle)
+    leg(hlc, "2/6  return  -X (back to start)", -step, 0.0, move_s, settle)
+    leg(hlc, f"3/6  relative +Y  +{step:.2f} m", 0.0, step, move_s, settle)
+    leg(hlc, "4/6  return  -Y (back to start)", 0.0, -step, move_s, settle)
+    leg(hlc, f"5/6  relative -Y  -{step:.2f} m", 0.0, -step, move_s, settle)
+    leg(hlc, "6/6  return  +Y (back to start)", 0.0, step, move_s, settle)
 
     status("Landing...")
     hlc.land(0.0, land_s, yaw=None)
@@ -60,6 +66,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--settle", type=float, default=0.8)
     p.add_argument("--land-time", type=float, default=3.0)
     p.add_argument("--estimator-timeout", type=float, default=15.0)
+    p.add_argument("--post-estimator-hold", type=float, default=2.0)
     return p.parse_args(argv)
 
 
@@ -79,6 +86,8 @@ def main(argv: list[str] | None = None) -> int:
             time.sleep(0.5)
             reset_estimator(cf)
             wait_for_estimator(cf, args.estimator_timeout)
+            status(f"Kalman estimator extra hold {args.post_estimator_hold:.1f}s...")
+            time.sleep(args.post_estimator_hold)
             run_probe(
                 cf,
                 step=args.step,

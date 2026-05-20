@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import itertools
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -111,17 +112,17 @@ class SwarmSessionRunner:
         health = [_reject_missing_pose(item) for item in health]
         # TODO: Re-enable for demos with physical no-fly zones around the server.
         # health = _reject_no_fly_zone_launches(health, spec)
-        minimum_size = minimum_viable_swarm_size(spec.swarm_size)
-        selection = select_healthiest_swarm(health, spec.swarm_size, minimum_size=minimum_size)
+        minimum_size = minimum_viable_swarm_size(spec.swarm_size, spec.pattern)
+        initial_selection = select_healthiest_swarm(health, spec.swarm_size, minimum_size=minimum_size)
+        if not initial_selection.ready:
+            return DeployResult(mission_id, MissionState.REFUSED, initial_selection, None, message="insufficient_healthy_drones")
+
+        planned = _safe_swarm_plan_from_health(health, spec, minimum_size)
+        if planned is None:
+            return DeployResult(mission_id, MissionState.REFUSED, initial_selection, None, message="no safe assignment found")
+        selection, plan = planned
         if not selection.ready:
             return DeployResult(mission_id, MissionState.REFUSED, selection, None, message="insufficient_healthy_drones")
-
-        try:
-            planned_spec = replace(spec, swarm_size=len(selection.selected))
-            poses = launch_poses_from_health(selection.selected, planned_spec.hover_z)
-            plan = build_swarm_plan(poses, planned_spec)
-        except ValueError as exc:
-            return DeployResult(mission_id, MissionState.REFUSED, selection, None, message=str(exc))
         return DeployResult(mission_id, MissionState.ACCEPTED, selection, plan, message="prepared")
 
     async def execute_prepared(
@@ -196,6 +197,43 @@ class SwarmSessionRunner:
         )
 
 
+def _safe_swarm_plan_from_health(
+    health: list[DroneHealth],
+    spec: MissionSpec,
+    minimum_size: int,
+) -> tuple[SwarmSelection, SwarmPlan] | None:
+    ready = sorted((item for item in health if item.ready), key=lambda item: item.score, reverse=True)
+    max_size = min(spec.swarm_size, len(ready))
+    for size in range(max_size, minimum_size - 1, -1):
+        combinations = sorted(itertools.combinations(ready, size), key=lambda items: sum(item.score for item in items), reverse=True)
+        for selected in combinations:
+            selection = _selection_from_selected(health, selected, minimum_size)
+            try:
+                planned_spec = replace(spec, swarm_size=len(selection.selected))
+                poses = launch_poses_from_health(selection.selected, planned_spec.hover_z)
+                plan = build_swarm_plan(poses, planned_spec)
+            except ValueError:
+                continue
+            return selection, plan
+    return None
+
+
+def _selection_from_selected(
+    health: list[DroneHealth],
+    selected: tuple[DroneHealth, ...],
+    required_size: int,
+) -> SwarmSelection:
+    selected_uris = {item.uri for item in selected}
+    rejected = tuple(
+        sorted(
+            (item for item in health if item.uri not in selected_uris),
+            key=lambda item: (item.ready, item.score),
+            reverse=True,
+        )
+    )
+    return SwarmSelection(selected=selected, rejected=rejected, required_size=required_size)
+
+
 def _plan_to_dict(plan: SwarmPlan | None) -> dict | None:
     if plan is None:
         return None
@@ -225,9 +263,13 @@ def _plan_to_dict(plan: SwarmPlan | None) -> dict | None:
     }
 
 
-def minimum_viable_swarm_size(requested_size: int) -> int:
-    """Require at least 3 drones and more than half of the requested swarm."""
+def minimum_viable_swarm_size(requested_size: int, pattern: str = "") -> int:
+    """Allow fixed-pair fallback, otherwise require 3 drones and majority."""
 
+    if pattern == "crazy_pinwheel":
+        return requested_size
+    if requested_size <= 2:
+        return 1
     return max(MIN_SWARM_SIZE, requested_size // 2 + 1)
 
 
