@@ -9,6 +9,7 @@ from src.swarm.health import score_health
 from src.swarm.models import DroneCandidate
 from src.swarm.models import DroneHealth
 from src.swarm.models import HealthThresholds
+from src.swarm.roster import DEFAULT_DISCOVERY_FLEET
 from src.swarm.roster import select_healthiest_swarm
 from src.swarm.roster import discover_candidates
 from src.swarm.roster import default_radio_candidates
@@ -108,11 +109,7 @@ def test_default_radio_candidates_generate_known_fleet_range(monkeypatch):
 
     candidates = default_radio_candidates()
 
-    assert [candidate.uri for candidate in candidates] == [
-        "radio://0/80/2M/E7E7E7E701",
-        "radio://0/80/2M/E7E7E7E700",
-        "radio://1/90/2M/E7E7E7E709",
-    ]
+    assert [candidate.uri for candidate in candidates] == list(DEFAULT_DISCOVERY_FLEET)
 
 
 def test_default_radio_candidates_allow_exact_uri_list(monkeypatch):

@@ -9,10 +9,12 @@ from src.swarm.executor import PreparedExecution
 from src.swarm.health import StaticHealthProbe
 from src.swarm.models import DEFAULT_MIN_SEPARATION_M
 from src.swarm.models import DroneHealth
+from src.swarm.models import CRAZY_PINWHEEL_COMPACT_SWARM_SIZE
 from src.swarm.models import CRAZY_PINWHEEL_SWARM_SIZE
 from src.swarm.models import DEFAULT_SWARM_SIZE
 from src.swarm.models import MAX_SWARM_SIZE
 from src.swarm.models import MissionSpec
+from src.swarm.roster import DEFAULT_CRAZY_PINWHEEL_COMPACT_FLEET
 from src.swarm.roster import DEFAULT_FULL_FLEET
 from src.swarm.service import SwarmDeployService
 from src.swarm.session import SwarmSessionRunner
@@ -41,7 +43,7 @@ class EmergencyExecutor(FakeExecutor):
 
 
 def test_swarm_request_default_minimum_separation_matches_demo_clearance():
-    assert swarm_route.SwarmDeployRequest().min_separation_m == DEFAULT_MIN_SEPARATION_M == 0.10
+    assert swarm_route.SwarmDeployRequest().min_separation_m == DEFAULT_MIN_SEPARATION_M == 0.20
 
 
 class CapturingRunner(SwarmSessionRunner):
@@ -242,19 +244,21 @@ def test_dtw_drone_trigger_prepares_then_launches_swarm(tmp_path, monkeypatch):
 
 def test_dtw_demo_battery_endpoint_checks_fixed_drones(monkeypatch):
     calls = []
+    uris = swarm_route.DEFAULT_DISCOVERY_FLEET
 
     async def fake_check_candidates_concurrently(candidates, probe, thresholds):
         calls.append((candidates, probe, thresholds))
         return [
-            healthy(swarm_route._DTW_TRIGGER_URIS[0], 90),
+            healthy(uris[0], 90),
             DroneHealth(
-                swarm_route._DTW_TRIGGER_URIS[1],
+                uris[1],
                 False,
                 0,
                 reasons=("low_battery_percent",),
                 voltage=3.7,
                 battery_percent=20,
             ),
+            *(healthy(uri, 80) for uri in uris[2:]),
         ]
 
     monkeypatch.setattr(swarm_route, "check_candidates_concurrently", fake_check_candidates_concurrently)
@@ -266,12 +270,63 @@ def test_dtw_demo_battery_endpoint_checks_fixed_drones(monkeypatch):
 
     assert response.status_code == 200
     data = response.json()
-    assert [item["uri"] for item in data["results"]] == list(swarm_route._DTW_TRIGGER_URIS)
+    assert [item["uri"] for item in data["results"]] == list(uris)
     assert data["results"][0]["battery_percent"] == 90
     assert data["results"][1]["reasons"] == ["low_battery_percent"]
     candidates, _probe, thresholds = calls[0]
-    assert [candidate.uri for candidate in candidates] == list(swarm_route._DTW_TRIGGER_URIS)
+    assert [candidate.uri for candidate in candidates] == list(uris)
     assert thresholds.health_timeout_s == 10.0
+    assert thresholds.max_concurrent_checks == len(uris)
+
+
+def test_dtw_demo_battery_endpoint_supports_compact_fleet(monkeypatch):
+    calls = []
+    uris = DEFAULT_CRAZY_PINWHEEL_COMPACT_FLEET
+
+    async def fake_check_candidates_concurrently(candidates, probe, thresholds):
+        calls.append((candidates, probe, thresholds))
+        return [healthy(candidate.uri, 90) for candidate in candidates]
+
+    monkeypatch.setattr(swarm_route, "check_candidates_concurrently", fake_check_candidates_concurrently)
+    app = FastAPI()
+    app.include_router(swarm_route.dtw_router)
+    client = TestClient(app)
+
+    response = client.get("/drone/battery", params={"fleet": "compact", "health_timeout_s": 3.0})
+
+    assert response.status_code == 200
+    candidates, _probe, thresholds = calls[0]
+    assert [candidate.uri for candidate in candidates] == list(uris)
+    assert thresholds.health_timeout_s == 3.0
+    assert thresholds.max_concurrent_checks == len(uris)
+
+
+def test_dtw_demo_battery_endpoint_supports_explicit_uris(monkeypatch):
+    calls = []
+
+    async def fake_check_candidates_concurrently(candidates, probe, thresholds):
+        calls.append((candidates, probe, thresholds))
+        return [healthy(candidate.uri, 90) for candidate in candidates]
+
+    monkeypatch.setattr(swarm_route, "check_candidates_concurrently", fake_check_candidates_concurrently)
+    app = FastAPI()
+    app.include_router(swarm_route.dtw_router)
+    client = TestClient(app)
+
+    response = client.get(
+        "/drone/battery",
+        params=[
+            ("uri", "radio://0/80/2M/E7E7E7E700"),
+            ("uri", "radio://1/90/2M/E7E7E7E708"),
+        ],
+    )
+
+    assert response.status_code == 200
+    candidates, _probe, thresholds = calls[0]
+    assert [candidate.uri for candidate in candidates] == [
+        "radio://0/80/2M/E7E7E7E700",
+        "radio://1/90/2M/E7E7E7E708",
+    ]
     assert thresholds.max_concurrent_checks == 2
 
 
@@ -283,9 +338,9 @@ def test_dtw_crazy_trigger_prepares_pinwheel_swarm():
         swarm_size=CRAZY_PINWHEEL_SWARM_SIZE,
         formation="diamond",
         pattern="crazy_pinwheel",
-        final_pose=(0.45, 0.0, 0.62),
+        final_pose=(0.5, -0.6, 1.12),
         slot_spacing_m=0.42,
-        hover_z=0.55,
+        hover_z=1.05,
         no_fly_zone_paths=(),
     )
     slots = formation_slots(pinwheel_spec)
@@ -296,7 +351,7 @@ def test_dtw_crazy_trigger_prepares_pinwheel_swarm():
         CapturingRunner(
             probe=StaticHealthProbe(
                 {
-                    uri: healthy(uri, i + 80, pose=(slot[0], slot[1], 0.55))
+                        uri: healthy(uri, i + 80, pose=(slot[0], slot[1], pinwheel_spec.hover_z))
                     for i, (uri, slot) in enumerate(zip(uris, slots))
                 }
             ),
@@ -320,8 +375,65 @@ def test_dtw_crazy_trigger_prepares_pinwheel_swarm():
         assert captured_specs[0].swarm_size == CRAZY_PINWHEEL_SWARM_SIZE
         assert captured_specs[0].allowed_uris == DEFAULT_FULL_FLEET
         assert captured_specs[0].max_concurrent_checks == CRAZY_PINWHEEL_SWARM_SIZE
-        assert captured_specs[0].final_pose == (0.45, 0.0, 0.62)
+        assert captured_specs[0].final_pose == (0.5, -0.6, 1.12)
+        assert captured_specs[0].hover_z == 1.05
         assert captured_specs[0].pattern_s == 1.2
+
+        for _ in range(100):
+            status_response = client.get(f"/drone/status/{sequence_id}")
+            if status_response.json()["phase"] == "ready_to_deploy":
+                break
+            time.sleep(0.01)
+        assert status_response.status_code == 200
+        assert status_response.json()["phase"] == "ready_to_deploy"
+
+
+def test_dtw_crazy_trigger_compact_prepares_five_drone_pinwheel():
+    from src.swarm.planner import formation_slots
+
+    uris = DEFAULT_CRAZY_PINWHEEL_COMPACT_FLEET
+    pinwheel_spec = MissionSpec(
+        swarm_size=CRAZY_PINWHEEL_COMPACT_SWARM_SIZE,
+        formation="diamond",
+        pattern="crazy_pinwheel",
+        crazy_pinwheel_compact=True,
+        final_pose=(0.5, -0.6, 1.12),
+        slot_spacing_m=0.42,
+        hover_z=1.05,
+        no_fly_zone_paths=(),
+    )
+    slots = formation_slots(pinwheel_spec)
+    assert len(slots) == 5
+    app = FastAPI()
+    app.include_router(swarm_route.dtw_router)
+    captured_specs = []
+    service = SwarmDeployService(
+        CapturingRunner(
+            probe=StaticHealthProbe(
+                {
+                    uri: healthy(uri, i + 80, pose=(slot[0], slot[1], pinwheel_spec.hover_z))
+                    for i, (uri, slot) in enumerate(zip(uris, slots))
+                }
+            ),
+            executor=FakeExecutor(),
+            captured_specs=captured_specs,
+        )
+    )
+    app.dependency_overrides[swarm_route.get_service] = lambda: service
+
+    with TestClient(app) as client:
+        trigger = client.post("/drone/crazy-trigger", params={"compact": True})
+
+        assert trigger.status_code == 200
+        sequence_id = trigger.json()["sequence_id"]
+        for _ in range(100):
+            if captured_specs:
+                break
+            time.sleep(0.01)
+        assert captured_specs[0].crazy_pinwheel_compact is True
+        assert captured_specs[0].swarm_size == CRAZY_PINWHEEL_COMPACT_SWARM_SIZE
+        assert captured_specs[0].allowed_uris == DEFAULT_CRAZY_PINWHEEL_COMPACT_FLEET
+        assert captured_specs[0].max_concurrent_checks == CRAZY_PINWHEEL_COMPACT_SWARM_SIZE
 
         for _ in range(100):
             status_response = client.get(f"/drone/status/{sequence_id}")

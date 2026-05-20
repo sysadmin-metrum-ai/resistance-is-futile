@@ -3,6 +3,7 @@ import time
 
 from src.swarm.executor import BatteryWatch
 from src.swarm.executor import CflibDroneConnector
+from src.swarm.executor import RTL_LAND_SEQUENCE_DELAY_S
 from src.swarm.executor import SwarmExecutor
 from src.swarm.executor import _build_schedule
 from src.swarm.models import MissionSpec
@@ -185,8 +186,17 @@ def test_schedule_uses_landing_settle_after_final_return(monkeypatch):
 
     schedule = _build_schedule(spec, n_formation=1, n_pattern=1, n_return=2)
 
-    assert schedule.return_steps == (117.3, 124.3)
-    assert schedule.land_at == 128.8
+    assert schedule.return_fire_ats == (
+        (125.3, 132.3),
+        (125.3, 139.8 + RTL_LAND_SEQUENCE_DELAY_S),
+        (125.3, 147.3 + 2 * RTL_LAND_SEQUENCE_DELAY_S),
+    )
+    assert schedule.land_ats == (
+        136.8,
+        144.3 + RTL_LAND_SEQUENCE_DELAY_S,
+        151.8 + 2 * RTL_LAND_SEQUENCE_DELAY_S,
+    )
+    assert schedule.land_at == 155.8
 
 
 def test_executor_turns_orange_after_final_pattern_waypoint(monkeypatch):

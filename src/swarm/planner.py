@@ -22,7 +22,7 @@ CRAZY_PINWHEEL_RADIUS_EPS_M = 0.05
 
 CAPTURED_RTL_XY_LANE_M = 0.15
 TAKEOFF_MIN_XY_SEPARATION_M = 0.13
-CAPTURED_MIN_PATTERN_S = 0.8
+CAPTURED_MIN_PATTERN_S = 0.4
 
 
 @dataclass(frozen=True)
@@ -180,9 +180,7 @@ def _route_to_return(
 ) -> tuple[Vec3, ...]:
     if spec.pattern == "captured_path" and pattern_points:
         final_slot = _captured_final_slot(slot, spec)
-        lane_point = _captured_return_lane_point(final_slot, return_point)
-        altitude_point = (lane_point[0], lane_point[1], return_point[2])
-        return (final_slot, lane_point, altitude_point, return_point)
+        return (final_slot, return_point)
     return _route_between(slot, return_point, spec, zones)
 
 

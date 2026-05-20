@@ -33,6 +33,8 @@ logger = logging.getLogger(__name__)
 SCHEDULE_PREP_S = 1.0
 LED_BLINK_INTERVAL_S = 0.75
 LED_POST_LAND_S = 3.0
+RTL_LAND_SEQUENCE_DELAY_S = 2.0
+FINAL_LAND_SETTLE_S = 0.5
 IN_FLIGHT_BATTERY_LOG_MS = 1000
 IN_FLIGHT_LAND_BATTERY_PERCENT = 5
 IN_FLIGHT_LOW_BATTERY_SAMPLES = 5
@@ -63,21 +65,31 @@ class SwarmSchedule:
     source of inter-drone offset (~10-30ms instead of ~100-300ms).
     """
 
-    takeoff_at: float
-    formation_steps: tuple[float, ...]
+    takeoff_ats: tuple[float, ...]
+    formation_fire_ats: tuple[tuple[float, ...], ...]
     led_blue_at: float
-    pattern_steps: tuple[float, ...]
-    return_steps: tuple[float, ...]
-    land_at: float
+    pattern_fire_ats: tuple[tuple[float, ...], ...]
+    return_fire_ats: tuple[tuple[float, ...], ...]
+    land_ats: tuple[float, ...]
     cleanup_at: float
+
+    @property
+    def takeoff_at(self) -> float:
+        return min(self.takeoff_ats) if self.takeoff_ats else 0.0
+
+    @property
+    def land_at(self) -> float:
+        return max(self.land_ats) if self.land_ats else 0.0
 
 
 def _build_schedule(
-    spec: MissionSpec,
+    plan: SwarmPlan | MissionSpec,
     n_formation: int,
     n_pattern: int,
     n_return: int,
 ) -> SwarmSchedule:
+    spec = plan.spec if isinstance(plan, SwarmPlan) else plan
+    n_drones = len(plan.drones) if isinstance(plan, SwarmPlan) else spec.swarm_size
     t = time.monotonic() + SCHEDULE_PREP_S
     pattern_s = pattern_duration_s(spec)
     pattern_hold = pattern_hold_s(spec)
@@ -89,6 +101,12 @@ def _build_schedule(
     for _ in range(n_formation):
         formation_steps.append(t)
         t += spec.move_s + spec.hold_s
+    formation_fire_ats = tuple(
+        tuple(fire_at + drone_ix * max(1, n_formation) * spec.move_s for fire_at in formation_steps)
+        for drone_ix in range(n_drones)
+    )
+    if n_formation > 0:
+        t += max(0, n_drones - 1) * max(1, n_formation) * spec.move_s
 
     # Brief LED-blue ack right after the formation is locked, before the
     # pattern phase begins. Adds 0.3s of dwell so the visual signal is
@@ -102,23 +120,74 @@ def _build_schedule(
         t += pattern_s + pattern_hold
     t += pattern_final_hold
 
-    return_steps: list[float] = []
-    for return_ix in range(n_return):
-        return_steps.append(t)
-        settle_s = spec.landing_settle_s if return_ix == n_return - 1 else spec.hold_s
-        t += spec.move_s + settle_s
-
-    land_at = t
-    cleanup_at = t + spec.land_s + LED_POST_LAND_S
+    if isinstance(plan, SwarmPlan):
+        return_ranks = _return_stagger_ranks(plan)
+    else:
+        return_ranks = tuple(range(n_drones))
+    return_fire_ats, land_ats = _return_and_land_times(
+        start_at=t,
+        spec=spec,
+        n_return=n_return,
+        return_ranks=return_ranks,
+    )
+    cleanup_at = max(land_ats) + spec.land_s + LED_POST_LAND_S
     return SwarmSchedule(
-        takeoff_at=takeoff_at,
-        formation_steps=tuple(formation_steps),
+        takeoff_ats=tuple(takeoff_at for _ in range(n_drones)),
+        formation_fire_ats=formation_fire_ats,
         led_blue_at=led_blue_at,
-        pattern_steps=tuple(pattern_steps),
-        return_steps=tuple(return_steps),
-        land_at=land_at,
+        pattern_fire_ats=tuple(tuple(pattern_steps) for _ in range(n_drones)),
+        return_fire_ats=return_fire_ats,
+        land_ats=land_ats,
         cleanup_at=cleanup_at,
     )
+
+
+def _return_and_land_times(
+    *,
+    start_at: float,
+    spec: MissionSpec,
+    n_return: int,
+    return_ranks: tuple[int, ...],
+) -> tuple[tuple[tuple[float, ...], ...], tuple[float, ...]]:
+    shared_steps = 1 if n_return > 1 else 0
+    shared_fire_ats: list[float] = []
+    cursor = start_at
+    for _ in range(shared_steps):
+        shared_fire_ats.append(cursor)
+        cursor += spec.move_s + spec.hold_s
+
+    rank_fire_ats: dict[int, tuple[float, ...]] = {}
+    rank_land_ats: dict[int, float] = {}
+    for rank in range(len(return_ranks)):
+        fire_ats = list(shared_fire_ats)
+        step_cursor = cursor
+        for _ in range(shared_steps, n_return):
+            fire_ats.append(step_cursor)
+            step_cursor += spec.move_s + FINAL_LAND_SETTLE_S
+        rank_fire_ats[rank] = tuple(fire_ats)
+        rank_land_ats[rank] = step_cursor
+        cursor = step_cursor + spec.land_s + RTL_LAND_SEQUENCE_DELAY_S
+    return (
+        tuple(rank_fire_ats[rank] for rank in return_ranks),
+        tuple(rank_land_ats[rank] for rank in return_ranks),
+    )
+
+
+def _return_stagger_ranks(plan: SwarmPlan) -> tuple[int, ...]:
+    ordered = sorted(
+        enumerate(plan.drones),
+        key=lambda item: (_return_distance_m(item[1]), item[0]),
+    )
+    ranks = [0] * len(plan.drones)
+    for rank, (drone_ix, _drone) in enumerate(ordered):
+        ranks[drone_ix] = rank
+    return tuple(ranks)
+
+
+def _return_distance_m(drone: DronePlan) -> float:
+    start = drone.pattern_points[-1] if drone.pattern_points else drone.formation_slot
+    points = (start, *drone.route_to_return)
+    return sum(((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2) ** 0.5 for a, b in zip(points, points[1:]))
 
 
 def _sleep_until(deadline: float) -> None:
@@ -307,10 +376,10 @@ class CflibDroneConnection:
             # BVCA requires peer localization and is confirmed with PID, not Mellinger.
             cf.param.set_value("stabilizer.controller", "1")
             cf.param.set_value("colAv.enable", "1")
-            radius_xy = max(0.05, spec.min_separation_m / 2.0)
+            radius_xy = max(0.10, spec.min_separation_m)
             cf.param.set_value("colAv.ellipsoidX", f"{radius_xy:.3f}")
             cf.param.set_value("colAv.ellipsoidY", f"{radius_xy:.3f}")
-            cf.param.set_value("colAv.ellipsoidZ", f"{max(radius_xy * 3.0, 0.15):.3f}")
+            cf.param.set_value("colAv.ellipsoidZ", f"{max(radius_xy * 3.0, 0.45):.3f}")
         time.sleep(0.5)
 
         logger.info("swarm executor: %s waiting for kalman convergence", self.uri)
@@ -595,7 +664,7 @@ class SwarmExecutor:
             n_formation = max(len(d.route_to_formation) for d in plan.drones)
             n_pattern = max(len(d.pattern_points) for d in plan.drones)
             n_return = max(len(d.route_to_return) for d in plan.drones)
-            schedule = _build_schedule(plan.spec, n_formation, n_pattern, n_return)
+            schedule = _build_schedule(plan, n_formation, n_pattern, n_return)
             logger.info(
                 "swarm executor: schedule takeoff_at=+%.2fs land_at=+%.2fs",
                 schedule.takeoff_at - time.monotonic(),
@@ -792,12 +861,15 @@ class SwarmExecutor:
 
         # Pad shorter routes by holding at the last waypoint so every drone
         # fires the same number of go_to commands at the same instants.
-        formation_points = _pad_route(drone_plan.route_to_formation, len(schedule.formation_steps))
-        return_points = _pad_route(drone_plan.route_to_return, len(schedule.return_steps))
-        pattern_points = _pad_route(drone_plan.pattern_points, len(schedule.pattern_steps))
+        formation_fires = schedule.formation_fire_ats[drone_index]
+        formation_points = _pad_route(drone_plan.route_to_formation, len(formation_fires))
+        return_fires = schedule.return_fire_ats[drone_index]
+        return_points = _pad_route(drone_plan.route_to_return, len(return_fires))
+        pattern_fires = schedule.pattern_fire_ats[drone_index]
+        pattern_points = _pad_route(drone_plan.pattern_points, len(pattern_fires))
         pattern_point_yaws = pattern_yaws(spec, len(pattern_points))
 
-        _sleep_until(schedule.takeoff_at)
+        _sleep_until(schedule.takeoff_ats[drone_index])
         if self._emergency_stop.is_set():
             events.append(f"{uri}:emergency_stop")
             return events
@@ -825,7 +897,7 @@ class SwarmExecutor:
             events.append(f"{uri}:battery_watch_landed")
             return True
 
-        for fire_at, point in zip(schedule.formation_steps, formation_points):
+        for fire_at, point in zip(formation_fires, formation_points):
             _sleep_until(fire_at)
             if self._emergency_stop.is_set():
                 events.append(f"{uri}:emergency_stop")
@@ -842,7 +914,7 @@ class SwarmExecutor:
 
         if not battery_watch_landed:
             last_pattern_completion_at: float | None = None
-            for index, (fire_at, point, point_yaw) in enumerate(zip(schedule.pattern_steps, pattern_points, pattern_point_yaws)):
+            for index, (fire_at, point, point_yaw) in enumerate(zip(pattern_fires, pattern_points, pattern_point_yaws)):
                 _sleep_until(fire_at)
                 if self._emergency_stop.is_set():
                     events.append(f"{uri}:emergency_stop")
@@ -864,7 +936,7 @@ class SwarmExecutor:
                     logger.info("swarm executor: %s LED orange", uri)
 
         if not battery_watch_landed:
-            for fire_at, point in zip(schedule.return_steps, return_points):
+            for fire_at, point in zip(return_fires, return_points):
                 _sleep_until(fire_at)
                 if self._emergency_stop.is_set():
                     events.append(f"{uri}:emergency_stop")
@@ -878,7 +950,7 @@ class SwarmExecutor:
                 events.append(f"{uri}:return")
 
         if not battery_watch_landed:
-            _sleep_until(schedule.land_at)
+            _sleep_until(schedule.land_ats[drone_index])
             if self._emergency_stop.is_set():
                 events.append(f"{uri}:emergency_stop")
                 return events
@@ -889,7 +961,7 @@ class SwarmExecutor:
                     logger.info("swarm executor: %s LED blue before land", uri)
                 commander.land(0.0, spec.land_s, yaw=None)
                 events.append(f"{uri}:land")
-                _sleep_until(schedule.land_at + spec.land_s)
+                _sleep_until(schedule.land_ats[drone_index] + spec.land_s)
                 if not crazy_mode:
                     blink = _replace_led_blink(blink, connection, uri, "green")
                 if blink is not None and not crazy_mode:

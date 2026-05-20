@@ -8,21 +8,19 @@ from src.swarm.health import normalize_uri
 from src.swarm.models import DroneCandidate
 from src.swarm.models import DroneHealth
 from src.swarm.models import MIN_EXECUTION_SWARM_SIZE
+from src.swarm.models import CRAZY_PINWHEEL_COMPACT_SWARM_SIZE
 from src.swarm.models import MAX_SWARM_SIZE
 from src.swarm.models import MissionSpec
 from src.swarm.models import SwarmSelection
 
 DEFAULT_DISCOVERY_URI_PREFIX = "radio://0/80/2M/E7E7E7E7"
-DEFAULT_DISCOVERY_COUNT = 9
-DEFAULT_DISCOVERY_FLEET = (
-    "radio://0/80/2M/E7E7E7E701",
-    "radio://0/80/2M/E7E7E7E700",
-    "radio://1/90/2M/E7E7E7E709",
-)
+DEFAULT_DISCOVERY_COUNT = 10
 DEFAULT_FULL_FLEET = tuple(
     [*(f"radio://0/80/2M/E7E7E7E7{index:02d}" for index in range(0, 5)),
      *(f"radio://1/90/2M/E7E7E7E7{index:02d}" for index in range(5, 10))]
 )
+DEFAULT_DISCOVERY_FLEET = DEFAULT_FULL_FLEET
+DEFAULT_CRAZY_PINWHEEL_COMPACT_FLEET = DEFAULT_FULL_FLEET[:CRAZY_PINWHEEL_COMPACT_SWARM_SIZE]
 
 
 def discover_candidates(allowed_uris: tuple[str, ...] = ()) -> list[DroneCandidate]:
@@ -57,7 +55,7 @@ def default_radio_candidates() -> list[DroneCandidate]:
 
     prefix = os.getenv("CRAZYFLIE_URI_PREFIX", DEFAULT_DISCOVERY_URI_PREFIX)
     count = int(os.getenv("CRAZYFLIE_URI_COUNT", str(DEFAULT_DISCOVERY_COUNT)))
-    return [DroneCandidate(uri=f"{prefix}{index:02d}") for index in range(1, count + 1)]
+    return [DroneCandidate(uri=f"{prefix}{index:02d}") for index in range(0, count)]
 
 
 def _split_uri_list(value: str) -> list[str]:

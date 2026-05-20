@@ -11,7 +11,7 @@ from typing import Literal
 from uuid import uuid4
 
 import httpx
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
 from src.core.config import get_settings
@@ -20,12 +20,14 @@ from src.swarm.health import check_candidates_concurrently
 from src.swarm.models import DEFAULT_MIN_SEPARATION_M
 from src.swarm.models import DroneCandidate
 from src.swarm.models import HealthThresholds
+from src.swarm.models import CRAZY_PINWHEEL_COMPACT_SWARM_SIZE
 from src.swarm.models import CRAZY_PINWHEEL_SWARM_SIZE
 from src.swarm.models import DEFAULT_SWARM_SIZE
 from src.swarm.models import MAX_SWARM_SIZE
 from src.swarm.models import MIN_SWARM_SIZE
 from src.swarm.models import MissionSpec
 from src.swarm.roster import DEFAULT_DISCOVERY_FLEET
+from src.swarm.roster import DEFAULT_CRAZY_PINWHEEL_COMPACT_FLEET
 from src.swarm.roster import DEFAULT_FULL_FLEET
 from src.swarm.service import SwarmDeployService
 from src.swarm.service import get_swarm_deploy_service
@@ -34,7 +36,6 @@ router = APIRouter()
 dtw_router = APIRouter()
 _DRONE_ESTIMATED_DURATION_SECONDS = 30
 _EMERGENCY_LAND_URIS = DEFAULT_DISCOVERY_FLEET
-_DTW_TRIGGER_URIS = ("radio://0/80/2M/E7E7E7E704", "radio://1/90/2M/E7E7E7E709")
 _PROJECT_ROOT = Path(__file__).resolve().parents[3]
 _DEFAULT_CAPTURED_PATH = _PROJECT_ROOT / "config/demo_path.json"
 _dtw_sequences: dict[str, dict] = {}
@@ -305,23 +306,42 @@ async def trigger_drone(
 
 @dtw_router.get("/drone/battery", response_model=SwarmHealthResponse)
 async def get_demo_drone_battery(
+    fleet: Literal["full", "compact", "default"] = Query("full", description="Configured fleet to probe"),
+    uri: tuple[str, ...] = Query((), description="Optional explicit drone URI(s); overrides fleet"),
+    health_timeout_s: float = Query(10.0, gt=0),
     x_api_key: str = Header(None, alias="X-API-Key"),
 ):
-    """Live health/battery snapshot for the fixed demo drones."""
+    """Live health/battery snapshot for configured or explicit demo drones."""
     verify_api_key(x_api_key)
-    thresholds = HealthThresholds(health_timeout_s=10.0, max_concurrent_checks=len(_DTW_TRIGGER_URIS))
+    target_uris = uri or _battery_probe_fleet(fleet)
+    thresholds = HealthThresholds(
+        health_timeout_s=health_timeout_s,
+        max_concurrent_checks=len(target_uris),
+    )
     results = await check_candidates_concurrently(
-        [DroneCandidate(uri=uri) for uri in _DTW_TRIGGER_URIS],
+        [DroneCandidate(uri=target_uri) for target_uri in target_uris],
         probe=CflibHealthProbe(),
         thresholds=thresholds,
     )
     return SwarmHealthResponse(results=[result.to_dict() for result in results])
 
 
+def _battery_probe_fleet(fleet: Literal["full", "compact", "default"]) -> tuple[str, ...]:
+    if fleet == "compact":
+        return DEFAULT_CRAZY_PINWHEEL_COMPACT_FLEET
+    if fleet == "default":
+        return DEFAULT_DISCOVERY_FLEET
+    return DEFAULT_FULL_FLEET
+
+
 @dtw_router.post("/drone/crazy-trigger", response_model=DroneTriggerResponse)
 async def trigger_crazy_drone(
     service: SwarmDeployService = Depends(get_service),
     x_api_key: str = Header(None, alias="X-API-Key"),
+    compact: bool = Query(
+        False,
+        description="Use 5-drone crazy pinwheel (center + middle ring only) instead of the full 10-drone layout",
+    ),
 ):
     """Prepare a higher-energy geometric swarm path without changing the default trigger."""
     verify_api_key(x_api_key)
@@ -330,10 +350,10 @@ async def trigger_crazy_drone(
         "swarm_mission_id": None,
         "state": "accepted",
         "phase": "preflight",
-        "message": "crazy_preflight",
+        "message": "crazy_preflight_compact" if compact else "crazy_preflight",
         "started_at": datetime.now(timezone.utc),
     }
-    asyncio.create_task(_run_crazy_dtw_sequence(sequence_id, service))
+    asyncio.create_task(_run_crazy_dtw_sequence(sequence_id, service, compact=compact))
     return DroneTriggerResponse(
         sequence_id=sequence_id,
         phase="preflight",
@@ -434,20 +454,28 @@ async def _run_dtw_sequence(sequence_id: str, service: SwarmDeployService) -> No
         _dtw_sequences[sequence_id].update(state="failed", phase="failed", message=str(exc))
 
 
-async def _run_crazy_dtw_sequence(sequence_id: str, service: SwarmDeployService) -> None:
+async def _run_crazy_dtw_sequence(
+    sequence_id: str,
+    service: SwarmDeployService,
+    *,
+    compact: bool = False,
+) -> None:
     try:
+        swarm_size = CRAZY_PINWHEEL_COMPACT_SWARM_SIZE if compact else CRAZY_PINWHEEL_SWARM_SIZE
+        allowed_uris = DEFAULT_CRAZY_PINWHEEL_COMPACT_FLEET if compact else DEFAULT_FULL_FLEET
         spec = MissionSpec(
-            swarm_size=CRAZY_PINWHEEL_SWARM_SIZE,
+            swarm_size=swarm_size,
             dry_run=False,
             arm=True,
             health_timeout_s=40.0,
-            max_concurrent_checks=CRAZY_PINWHEEL_SWARM_SIZE,
-            allowed_uris=DEFAULT_FULL_FLEET,
+            max_concurrent_checks=swarm_size,
+            allowed_uris=allowed_uris,
             formation="diamond",
             pattern="crazy_pinwheel",
-            final_pose=(0.45, 0.0, 0.62),
+            crazy_pinwheel_compact=compact,
+            final_pose=(0.5, -0.6, 1.12),
             slot_spacing_m=0.42,
-            hover_z=0.55,
+            hover_z=1.05,
             move_s=3.0,
             pattern_s=1.2,
             hold_s=0.6,

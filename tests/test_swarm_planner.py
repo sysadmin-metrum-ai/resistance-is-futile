@@ -158,7 +158,7 @@ def test_captured_path_uses_recorded_start_and_replays_relative_waypoints(tmp_pa
     assert [round(slot[1], 3) for slot in slots] == [1.0, 1.0, 1.0]
     assert formation_yaw(spec) == -1.5707963267948966
     assert go_to_yaw(spec) == 0.0
-    assert pattern_duration_s(spec) == 0.8
+    assert pattern_duration_s(spec) == 0.4
     assert pattern_hold_s(spec) == 0.0
     assert pattern_final_hold_s(spec) == 3.0
     assert pattern_yaws(spec, 3) == (-1.5707963267948966, -1.5707963267948966, 0.0)
@@ -203,15 +203,7 @@ def test_captured_path_uses_recorded_start_and_replays_relative_waypoints(tmp_pa
         assert tuple(round(value, 6) for value in drone.route_to_return[0]) == tuple(
             round(value, 6) for value in expected_final_stage
         )
-        expected_lane_y = (
-            drone.return_point[1] + 0.15
-            if drone.return_point[1] > 0
-            else drone.return_point[1] - 0.15
-            if drone.return_point[1] < 0
-            else 0.15
-        )
-        assert drone.route_to_return[1] == (drone.return_point[0], expected_lane_y, drone.route_to_return[0][2])
-        assert drone.route_to_return[2] == (drone.return_point[0], expected_lane_y, drone.return_point[2])
+        assert len(drone.route_to_return) == 2
         assert drone.route_to_return[-1] == drone.return_point
 
 

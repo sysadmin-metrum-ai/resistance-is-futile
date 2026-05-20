@@ -13,6 +13,7 @@ MIN_SWARM_SIZE = 3
 DEFAULT_SWARM_SIZE = 5
 MAX_SWARM_SIZE = 10
 CRAZY_PINWHEEL_SWARM_SIZE = 10
+CRAZY_PINWHEEL_COMPACT_SWARM_SIZE = 5
 DEFAULT_CRAZY_PINWHEEL_OUTER_DELTA_M = 0.25
 DEFAULT_MIN_SEPARATION_M = 0.10
 
@@ -135,6 +136,7 @@ class MissionSpec:
     denied_uris: tuple[str, ...] = ()
     health_timeout_s: float = 40.0
     max_concurrent_checks: int = 1
+    crazy_pinwheel_compact: bool = False
     crazy_pinwheel_outer_delta_m: float = DEFAULT_CRAZY_PINWHEEL_OUTER_DELTA_M
     callback_url: str | None = None
     metadata: dict = field(default_factory=dict)
