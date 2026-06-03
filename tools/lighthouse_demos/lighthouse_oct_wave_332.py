@@ -37,7 +37,7 @@ Put each craft on the pad that matches **its** row/uri so takeoff + rally are sh
 
 **Example matching pads at x ≈ −0.3, +0.3, +0.9** (keep ``y-span-*`` in line with real spacing)::
 
-    uv run python lighthouse_oct_wave_332.py \\
+    uv run python -m tools.lighthouse_demos.lighthouse_oct_wave_332.py \\
         --row1-x -0.3 --row2-x 0.3 --row3-x 0.9 \\
         --y-span-outer 0.65 --y-span-mid 0.40
 
@@ -55,8 +55,8 @@ proven headroom.
 
 Usage::
 
-    uv run python lighthouse_oct_wave_332.py
-    uv run python lighthouse_oct_wave_332.py --takeoff-stagger-step 0.12
+    uv run python -m tools.lighthouse_demos.lighthouse_oct_wave_332.py
+    uv run python -m tools.lighthouse_demos.lighthouse_oct_wave_332.py --takeoff-stagger-step 0.12
 """
 
 from __future__ import annotations
@@ -64,14 +64,14 @@ from __future__ import annotations
 import argparse
 import sys
 
-from lighthouse_dual_x_step import status
-from lighthouse_oct_common import add_oct_timing_args
-from lighthouse_oct_common import add_oct_uri_args
-from lighthouse_oct_common import add_wave332_row_args
-from lighthouse_oct_common import build_wave332_homes
-from lighthouse_oct_common import collect_uris_from_args
-from lighthouse_oct_common import formation_wave332
-from lighthouse_oct_common import run_oct_mission
+from tools.lighthouse_demos.lighthouse_dual_x_step import status
+from tools.lighthouse_demos.lighthouse_oct_common import add_oct_timing_args
+from tools.lighthouse_demos.lighthouse_oct_common import add_oct_uri_args
+from tools.lighthouse_demos.lighthouse_oct_common import add_wave332_row_args
+from tools.lighthouse_demos.lighthouse_oct_common import build_wave332_homes
+from tools.lighthouse_demos.lighthouse_oct_common import collect_uris_from_args
+from tools.lighthouse_demos.lighthouse_oct_common import formation_wave332
+from tools.lighthouse_demos.lighthouse_oct_common import run_oct_mission
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:

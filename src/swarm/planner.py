@@ -14,6 +14,7 @@ from src.safety.geofence import GeofenceBox
 from src.safety.geofence import load_box
 from src.swarm.assignment import distance3
 from src.swarm.assignment import optimal_assignment
+from src.swarm.models import CRAZY_PINWHEEL_COMPACT_SWARM_SIZE
 from src.swarm.models import CRAZY_PINWHEEL_SWARM_SIZE
 from src.swarm.models import MissionSpec
 from src.swarm.models import Vec3
@@ -56,9 +57,10 @@ def formation_slots(spec: MissionSpec) -> list[Vec3]:
     n = spec.swarm_size
 
     if spec.pattern == "crazy_pinwheel":
-        if n != CRAZY_PINWHEEL_SWARM_SIZE:
-            raise ValueError(f"crazy_pinwheel requires swarm_size={CRAZY_PINWHEEL_SWARM_SIZE}")
-        offsets = _crazy_pinwheel_offsets(spacing, spec.crazy_pinwheel_outer_delta_m)
+        expected_size = CRAZY_PINWHEEL_COMPACT_SWARM_SIZE if spec.crazy_pinwheel_compact else CRAZY_PINWHEEL_SWARM_SIZE
+        if n != expected_size:
+            raise ValueError(f"crazy_pinwheel requires swarm_size={expected_size}")
+        offsets = _crazy_pinwheel_offsets(spacing, spec.crazy_pinwheel_outer_delta_m, compact=spec.crazy_pinwheel_compact)
     elif spec.formation == "line":
         offsets = [(0.0, (i - (n - 1) / 2.0) * spacing, 0.0) for i in range(n)]
     elif spec.formation == "triangle":
@@ -397,7 +399,7 @@ def _crazy_pinwheel_orbit(
     return tuple(points)
 
 
-def _crazy_pinwheel_offsets(spacing: float, outer_delta: float) -> list[Vec3]:
+def _crazy_pinwheel_offsets(spacing: float, outer_delta: float, *, compact: bool = False) -> list[Vec3]:
     outer_radius = spacing + outer_delta
     middle = [
         (spacing, 0.0, 0.0),
@@ -409,6 +411,8 @@ def _crazy_pinwheel_offsets(spacing: float, outer_delta: float) -> list[Vec3]:
     for index in range(5):
         angle = math.pi / 5.0 + index * (2.0 * math.pi / 5.0)
         outer.append((outer_radius * math.cos(angle), outer_radius * math.sin(angle), 0.0))
+    if compact:
+        return [(0.0, 0.0, 0.0), *middle]
     return [(0.0, 0.0, 0.0), *middle, *outer]
 
 

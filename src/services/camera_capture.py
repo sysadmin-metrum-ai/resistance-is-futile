@@ -6,13 +6,13 @@ Handles image capture during missions, interfacing with Crazyflie camera
 
 import asyncio
 import logging
-import os
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
 from src.core.config import Settings, get_settings
+from src.services.aideck_camera import AiDeckJpegStream
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +57,7 @@ class CameraCapture:
         try:
             # Generate unique image ID and filename
             image_id = str(uuid.uuid4())
-            timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+            timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
 
             # Build filename: mission_drone_timestamp_interval
             parts = [mission_id]
@@ -92,19 +92,35 @@ class CameraCapture:
 
     async def _capture_from_camera(self) -> Optional[bytes]:
         """
-        Capture image from Crazyflie camera.
+        Capture image from the configured Crazyflie AI deck camera.
 
-        This is a placeholder implementation. Replace with actual
-        Crazyflie camera API integration when hardware is available.
+        When AIDECK_CAMERA_HOST is not configured, this returns None so tests
+        and dry-run demos still create a placeholder image.
 
         Returns:
             Image data as bytes, or None if capture failed
         """
-        # Placeholder: In production, this would interface with the
-        # Crazyflie camera API (e.g., via MQTT or direct connection)
-        # For now, return None to trigger placeholder image creation
-        logger.debug("Camera capture placeholder - no actual camera connected")
-        return None
+        if not self.settings.aideck_camera_host:
+            logger.debug("Camera capture placeholder - AIDECK_CAMERA_HOST is not configured")
+            return None
+
+        try:
+            return await asyncio.to_thread(self._capture_from_aideck)
+        except Exception as exc:
+            logger.warning("AI deck camera capture failed: %s", exc)
+            return None
+
+    def _capture_from_aideck(self) -> bytes:
+        stream = AiDeckJpegStream(
+            self.settings.aideck_camera_host,
+            port=self.settings.aideck_camera_port,
+            timeout_s=self.settings.aideck_camera_timeout_s,
+        )
+        stream.start()
+        try:
+            return stream.wait_for_frame(self.settings.aideck_camera_timeout_s)
+        finally:
+            stream.stop()
 
     async def _create_placeholder_image(self, filepath: Path) -> None:
         """

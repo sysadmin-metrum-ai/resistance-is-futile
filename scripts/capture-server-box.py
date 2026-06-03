@@ -21,10 +21,10 @@ from cflib.crazyflie import Crazyflie
 from cflib.crazyflie.log import LogConfig
 from cflib.crazyflie.syncCrazyflie import SyncCrazyflie
 
-from lighthouse_dual_x_step import cache_dir_for_uri
-from lighthouse_dual_x_step import reset_estimator
-from lighthouse_dual_x_step import status
-from lighthouse_dual_x_step import wait_for_estimator
+from tools.lighthouse_demos.lighthouse_dual_x_step import cache_dir_for_uri
+from tools.lighthouse_demos.lighthouse_dual_x_step import reset_estimator
+from tools.lighthouse_demos.lighthouse_dual_x_step import status
+from tools.lighthouse_demos.lighthouse_dual_x_step import wait_for_estimator
 from src.safety.geofence import Point3
 from src.safety.geofence import box_from_top_corners
 from src.safety.geofence import save_box

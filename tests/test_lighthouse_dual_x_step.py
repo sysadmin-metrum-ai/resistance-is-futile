@@ -29,7 +29,7 @@ def install_fake_cflib():
 
 install_fake_cflib()
 
-MODULE_PATH = Path(__file__).resolve().parents[1] / "lighthouse_dual_x_step.py"
+MODULE_PATH = Path(__file__).resolve().parents[1] / "tools" / "lighthouse_demos" / "lighthouse_dual_x_step.py"
 SPEC = importlib.util.spec_from_file_location("lighthouse_dual_x_step", MODULE_PATH)
 module = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None

@@ -1,7 +1,7 @@
 """Two-Crazyflie Lighthouse demo: orbit a captured server box at two heights.
 
 Usage:
-    uv run python lighthouse_dual_server_orbit.py
+    uv run python -m tools.lighthouse_demos.lighthouse_dual_server_orbit.py
 """
 
 from __future__ import annotations
@@ -15,16 +15,16 @@ import cflib.crtp
 from cflib.crazyflie import Crazyflie
 from cflib.crazyflie.syncCrazyflie import SyncCrazyflie
 
-from lighthouse_dual_x_step import cache_dir_for_uri
-from lighthouse_dual_x_step import configure_drone
-from lighthouse_dual_x_step import set_bottom_color_led_blue
-from lighthouse_dual_x_step import status
-from lighthouse_dual_x_step import stop_all
-from lighthouse_dual_x_step import takeoff_stagger_drone_b
-from lighthouse_single_server_orbit import average_pose
-from lighthouse_single_server_orbit import collect_pose_samples
-from lighthouse_single_server_orbit import orbit_points
-from lighthouse_single_server_orbit import wait_after
+from tools.lighthouse_demos.lighthouse_dual_x_step import cache_dir_for_uri
+from tools.lighthouse_demos.lighthouse_dual_x_step import configure_drone
+from tools.lighthouse_demos.lighthouse_dual_x_step import set_bottom_color_led_blue
+from tools.lighthouse_demos.lighthouse_dual_x_step import status
+from tools.lighthouse_demos.lighthouse_dual_x_step import stop_all
+from tools.lighthouse_demos.lighthouse_dual_x_step import takeoff_stagger_drone_b
+from tools.lighthouse_demos.lighthouse_single_server_orbit import average_pose
+from tools.lighthouse_demos.lighthouse_single_server_orbit import collect_pose_samples
+from tools.lighthouse_demos.lighthouse_single_server_orbit import orbit_points
+from tools.lighthouse_demos.lighthouse_single_server_orbit import wait_after
 from src.safety.geofence import Point3
 from src.safety.geofence import load_box
 

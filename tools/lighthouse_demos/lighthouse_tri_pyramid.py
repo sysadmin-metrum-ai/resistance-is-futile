@@ -11,8 +11,8 @@ triangle targets:
   Base +Y / −Y: (tip_x, ±half_span, base_z)
 
 Usage:
-    uv run python lighthouse_tri_pyramid.py
-    uv run python lighthouse_tri_pyramid.py --skip-lights
+    uv run python -m tools.lighthouse_demos.lighthouse_tri_pyramid.py
+    uv run python -m tools.lighthouse_demos.lighthouse_tri_pyramid.py --skip-lights
 
 Lights: only ``colorLedBot.wrgb8888`` is used (bottom Color deck LED). Older scripts
 referenced ``led_ring.*`` params; stock firmware often has **no** LED-ring deck TOC
@@ -34,10 +34,10 @@ from cflib.crazyflie import Crazyflie
 from cflib.crazyflie.log import LogConfig
 from cflib.crazyflie.syncCrazyflie import SyncCrazyflie
 
-from lighthouse_dual_x_step import cache_dir_for_uri
-from lighthouse_dual_x_step import configure_drone
-from lighthouse_dual_x_step import status
-from lighthouse_dual_x_step import stop_all
+from tools.lighthouse_demos.lighthouse_dual_x_step import cache_dir_for_uri
+from tools.lighthouse_demos.lighthouse_dual_x_step import configure_drone
+from tools.lighthouse_demos.lighthouse_dual_x_step import status
+from tools.lighthouse_demos.lighthouse_dual_x_step import stop_all
 
 Vec3 = tuple[float, float, float]
 

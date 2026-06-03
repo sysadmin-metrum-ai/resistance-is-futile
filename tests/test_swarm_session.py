@@ -124,6 +124,19 @@ def test_prepare_degrades_to_four_when_one_drone_is_unhealthy():
     assert [item.uri for item in result.selection.rejected] == ["drone-4"]
 
 
+def test_prepare_refuses_degraded_result_when_full_swarm_required():
+    probe = CountingProbe(unhealthy={"drone-4"})
+    runner = SwarmSessionRunner(probe=probe)
+    candidates = [DroneCandidate(f"drone-{index}") for index in range(5)]
+    spec = MissionSpec(swarm_size=5, require_full_swarm=True, no_fly_zone_paths=())
+
+    result = asyncio.run(runner.prepare(spec, candidates))
+
+    assert result.plan is None
+    assert result.message == "insufficient_healthy_drones"
+    assert result.selection.required_size == 5
+
+
 def test_prepare_rejects_missing_pose_and_uses_remaining_drones():
     probe = CountingProbe(missing_pose={"drone-4"})
     runner = SwarmSessionRunner(probe=probe)

@@ -1,8 +1,8 @@
 """Simple Crazyflie Lighthouse hover test.
 
 Usage:
-    uv run python lighthouse_hover.py
-    uv run python lighthouse_hover.py --uri radio://0/80/2M --hover-height 0.40
+    uv run python -m tools.lighthouse_demos.lighthouse_hover.py
+    uv run python -m tools.lighthouse_demos.lighthouse_hover.py --uri radio://0/80/2M --hover-height 0.40
 """
 
 import argparse

@@ -1,8 +1,8 @@
 """Take off, move +X, move back, and land using Lighthouse positioning.
 
 Usage:
-    uv run python lighthouse_x_step.py --uri radio://0/80/2M
-    uv run python lighthouse_x_step.py --uri radio://0/80/2M --height 0.40 --x-distance 0.50
+    uv run python -m tools.lighthouse_demos.lighthouse_x_step.py --uri radio://0/80/2M
+    uv run python -m tools.lighthouse_demos.lighthouse_x_step.py --uri radio://0/80/2M --height 0.40 --x-distance 0.50
 """
 
 import argparse

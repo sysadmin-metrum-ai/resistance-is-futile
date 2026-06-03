@@ -3,9 +3,12 @@
 }
 
 :3003 {
-    # API requests - strip /api prefix before sending to backend
+    # API requests keep the /api prefix because FastAPI mounts routes there.
     handle /api/* {
-        uri strip_prefix /api
+        reverse_proxy api:8000
+    }
+
+    handle /drone/* {
         reverse_proxy api:8000
     }
 

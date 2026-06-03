@@ -10,8 +10,8 @@
 Distances default to 0.8 m then 0.6 m then 0.6 m then 0.8 m (``-8 / -6 / +6 / +8`` in decimetres).
 
 Usage:
-    uv run python lighthouse_dual_stack_path.py
-    uv run python lighthouse_dual_stack_path.py --height-a 0.22 --height-b 0.45
+    uv run python -m tools.lighthouse_demos.lighthouse_dual_stack_path.py
+    uv run python -m tools.lighthouse_demos.lighthouse_dual_stack_path.py --height-a 0.22 --height-b 0.45
 """
 
 from __future__ import annotations
@@ -27,12 +27,12 @@ from cflib.crazyflie import Crazyflie
 from cflib.crazyflie.log import LogConfig
 from cflib.crazyflie.syncCrazyflie import SyncCrazyflie
 
-from lighthouse_dual_x_step import cache_dir_for_uri
-from lighthouse_dual_x_step import configure_drone
-from lighthouse_dual_x_step import set_bottom_color_led_blue
-from lighthouse_dual_x_step import status
-from lighthouse_dual_x_step import stop_all
-from lighthouse_dual_x_step import takeoff_stagger_drone_b
+from tools.lighthouse_demos.lighthouse_dual_x_step import cache_dir_for_uri
+from tools.lighthouse_demos.lighthouse_dual_x_step import configure_drone
+from tools.lighthouse_demos.lighthouse_dual_x_step import set_bottom_color_led_blue
+from tools.lighthouse_demos.lighthouse_dual_x_step import status
+from tools.lighthouse_demos.lighthouse_dual_x_step import stop_all
+from tools.lighthouse_demos.lighthouse_dual_x_step import takeoff_stagger_drone_b
 
 
 def _hl_wait(move_s: float, settle: float, pad: float) -> None:

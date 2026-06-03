@@ -1,13 +1,13 @@
 """Fleet health check: self-test, battery, and motor spin-up for all registered drones.
 
-Reads the drone roster from drones.db, scans the radio for each one,
+Reads the drone roster from data/drones.db, scans the radio for each one,
 and runs diagnostics sequentially. With a single Crazyradio PA only one
 connection at a time is possible; multiple radios would enable parallel checks.
 
 Usage:
-    python test-health.py                  # check all drones in DB
-    python test-health.py --motors         # include motor spin test
-    python test-health.py --uri radio://0/80/2M  # single drone override
+    uv run python tools/hardware-diagnostics/test-health.py
+    uv run python tools/hardware-diagnostics/test-health.py --motors
+    uv run python tools/hardware-diagnostics/test-health.py --uri radio://0/80/2M
 
 Importable:
     from test_health import preflight_check
@@ -25,7 +25,7 @@ from cflib.crazyflie import Crazyflie
 from cflib.crazyflie.syncCrazyflie import SyncCrazyflie
 from cflib.crazyflie.log import LogConfig
 
-DB_PATH = Path(__file__).resolve().parent / "drones.db"
+DB_PATH = Path(__file__).resolve().parents[2] / "data" / "drones.db"
 DATA_RATE = "2M"
 MOTOR_TEST_PWM = 12000
 MOTOR_SPIN_SEC = 0.8

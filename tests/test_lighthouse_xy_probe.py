@@ -27,13 +27,13 @@ def install_fake_lighthouse_x_step() -> None:
     lighthouse_x_step.reset_estimator = lambda _cf: None
     lighthouse_x_step.status = lambda _message: None
     lighthouse_x_step.wait_for_estimator = lambda _cf, _timeout: None
-    sys.modules["lighthouse_x_step"] = lighthouse_x_step
+    sys.modules["tools.lighthouse_demos.lighthouse_x_step"] = lighthouse_x_step
 
 
 install_fake_cflib()
 install_fake_lighthouse_x_step()
 
-MODULE_PATH = Path(__file__).resolve().parents[1] / "lighthouse_xy_probe.py"
+MODULE_PATH = Path(__file__).resolve().parents[1] / "tools" / "lighthouse_demos" / "lighthouse_xy_probe.py"
 SPEC = importlib.util.spec_from_file_location("lighthouse_xy_probe", MODULE_PATH)
 module = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None

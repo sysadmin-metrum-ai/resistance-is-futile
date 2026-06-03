@@ -32,8 +32,8 @@ Flight (relative-only, or after optional absolute start positions):
   5. Land.
 
 Usage:
-    uv run python lighthouse_dual_object_round.py
-    uv run python lighthouse_dual_object_round.py --start-a 0.5 0.3 --start-b -0.4 -0.35
+    uv run python -m tools.lighthouse_demos.lighthouse_dual_object_round.py
+    uv run python -m tools.lighthouse_demos.lighthouse_dual_object_round.py --start-a 0.5 0.3 --start-b -0.4 -0.35
 """
 
 from __future__ import annotations
@@ -49,12 +49,12 @@ from cflib.crazyflie import Crazyflie
 from cflib.crazyflie.log import LogConfig
 from cflib.crazyflie.syncCrazyflie import SyncCrazyflie
 
-from lighthouse_dual_x_step import cache_dir_for_uri
-from lighthouse_dual_x_step import configure_drone
-from lighthouse_dual_x_step import set_bottom_color_led_blue
-from lighthouse_dual_x_step import status
-from lighthouse_dual_x_step import stop_all
-from lighthouse_dual_x_step import takeoff_stagger_drone_b
+from tools.lighthouse_demos.lighthouse_dual_x_step import cache_dir_for_uri
+from tools.lighthouse_demos.lighthouse_dual_x_step import configure_drone
+from tools.lighthouse_demos.lighthouse_dual_x_step import set_bottom_color_led_blue
+from tools.lighthouse_demos.lighthouse_dual_x_step import status
+from tools.lighthouse_demos.lighthouse_dual_x_step import stop_all
+from tools.lighthouse_demos.lighthouse_dual_x_step import takeoff_stagger_drone_b
 
 VBAT_EMPTY_V = 3.0
 VBAT_FULL_V = 4.2

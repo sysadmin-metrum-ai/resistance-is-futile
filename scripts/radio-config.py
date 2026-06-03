@@ -19,7 +19,7 @@ from cflib.crazyflie import Crazyflie
 from cflib.crazyflie.syncCrazyflie import SyncCrazyflie
 from cflib.crazyflie.mem import MemoryElement
 
-DB_PATH = Path(__file__).resolve().parent.parent / "drones.db"
+DB_PATH = Path(__file__).resolve().parent.parent / "data" / "drones.db"
 SCAN_CHANNEL = 80
 DATA_RATE = "2M"
 

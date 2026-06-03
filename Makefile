@@ -3,6 +3,8 @@
 
 .PHONY: help install services-up services-down run test test-integration clean
 
+PROJECT_ROOT := $(CURDIR)
+
 # Default target
 help:
 	@echo "Drone Swarm Agent - Available targets:"
@@ -63,12 +65,12 @@ services-down:
 # Run API server
 run:
 	@echo "Starting API server on port 8000..."
-	@cd /home/cgadgil/src/resistance-is-futile && uv run uvicorn src.main:app --host 0.0.0.0 --port 8000
+	@cd "$(PROJECT_ROOT)" && uv run uvicorn src.main:app --host 0.0.0.0 --port 8000
 
 # Run unit tests
 test:
 	@echo "Running unit tests..."
-	cd /home/cgadgil/src/resistance-is-futile && uv run pytest tests/ -v
+	cd "$(PROJECT_ROOT)" && uv run pytest tests/ -v
 
 # Run integration tests
 test-integration: services-up
@@ -79,10 +81,11 @@ test-integration: services-up
 	@echo "Waiting for services to be ready..."
 	@sleep 3
 	@echo "Starting API server in background..."
-	@cd /home/cgadgil/src/resistance-is-futile && \
+	@cd "$(PROJECT_ROOT)" && \
 		POSTGREST_URL=http://localhost:3000 \
 		POSTGREST_API_KEY=test-key \
 		REDIS_URL=redis://localhost:6379 \
+		MOCK_MODE=true \
 		uv run uvicorn src.main:app --host 0.0.0.0 --port 8000 > /tmp/api-server.log 2>&1 & \
 		echo $$! > /tmp/api-server.pid
 	@echo "Waiting for API server to start..."
@@ -100,7 +103,7 @@ test-integration: services-up
 		fi; \
 	done
 	@echo "Running integration tests..."
-	@cd /home/cgadgil/src/resistance-is-futile && uv run pytest tests/test_integration.py -v; \
+	@cd "$(PROJECT_ROOT)" && RUN_INTEGRATION_TESTS=1 API_SERVER_MANAGED_EXTERNALLY=1 uv run pytest tests/test_integration.py -v; \
 		TEST_RESULT=$$?; \
 		echo "Stopping API server..."; \
 		if [ -f /tmp/api-server.pid ]; then \

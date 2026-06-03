@@ -136,6 +136,7 @@ class MissionSpec:
     denied_uris: tuple[str, ...] = ()
     health_timeout_s: float = 40.0
     max_concurrent_checks: int = 1
+    require_full_swarm: bool = False
     crazy_pinwheel_compact: bool = False
     crazy_pinwheel_outer_delta_m: float = DEFAULT_CRAZY_PINWHEEL_OUTER_DELTA_M
     callback_url: str | None = None
@@ -144,8 +145,10 @@ class MissionSpec:
     def validate(self) -> None:
         if not MIN_EXECUTION_SWARM_SIZE <= self.swarm_size <= MAX_SWARM_SIZE:
             raise ValueError(f"swarm_size must be {MIN_EXECUTION_SWARM_SIZE}..{MAX_SWARM_SIZE}")
-        if self.pattern == "crazy_pinwheel" and self.swarm_size != CRAZY_PINWHEEL_SWARM_SIZE:
-            raise ValueError(f"crazy_pinwheel requires swarm_size={CRAZY_PINWHEEL_SWARM_SIZE}")
+        if self.pattern == "crazy_pinwheel":
+            expected_size = CRAZY_PINWHEEL_COMPACT_SWARM_SIZE if self.crazy_pinwheel_compact else CRAZY_PINWHEEL_SWARM_SIZE
+            if self.swarm_size != expected_size:
+                raise ValueError(f"crazy_pinwheel requires swarm_size={expected_size}")
         if self.pattern == "crazy_pinwheel" and self.crazy_pinwheel_outer_delta_m <= 0:
             raise ValueError("crazy_pinwheel_outer_delta_m must be positive")
         if self.slot_spacing_m <= 0:

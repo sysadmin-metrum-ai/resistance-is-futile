@@ -26,7 +26,7 @@ from cflib.crazyflie.mem import LighthouseMemHelper
 from cflib.crazyflie.syncCrazyflie import SyncCrazyflie
 
 try:
-    from lighthouse_dual_x_step import cache_dir_for_uri
+    from tools.lighthouse_demos.lighthouse_dual_x_step import cache_dir_for_uri
 except ImportError:
 
     def cache_dir_for_uri(uri: str) -> str:

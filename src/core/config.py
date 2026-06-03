@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     # Camera configuration
     image_storage_path: str = "./captures"
     image_quality: int = 85
+    aideck_camera_host: str = ""
+    aideck_camera_port: int = 5000
+    aideck_camera_timeout_s: float = 5.0
 
     # Mock/Simulation mode (default: true for demo safety - no actual drone commands)
     mock_mode: bool = True

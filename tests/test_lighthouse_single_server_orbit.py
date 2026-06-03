@@ -31,7 +31,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-MODULE_PATH = ROOT / "lighthouse_single_server_orbit.py"
+MODULE_PATH = ROOT / "tools" / "lighthouse_demos" / "lighthouse_single_server_orbit.py"
 SPEC = importlib.util.spec_from_file_location("lighthouse_single_server_orbit", MODULE_PATH)
 module = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None

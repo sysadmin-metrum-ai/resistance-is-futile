@@ -1,7 +1,7 @@
 """Single-Crazyflie Lighthouse demo: orbit above a captured server box.
 
 Usage:
-    uv run python lighthouse_single_server_orbit.py
+    uv run python -m tools.lighthouse_demos.lighthouse_single_server_orbit.py
 """
 
 from __future__ import annotations
@@ -17,9 +17,9 @@ from cflib.crazyflie import Crazyflie
 from cflib.crazyflie.log import LogConfig
 from cflib.crazyflie.syncCrazyflie import SyncCrazyflie
 
-from lighthouse_dual_x_step import cache_dir_for_uri
-from lighthouse_dual_x_step import configure_drone
-from lighthouse_dual_x_step import status
+from tools.lighthouse_demos.lighthouse_dual_x_step import cache_dir_for_uri
+from tools.lighthouse_demos.lighthouse_dual_x_step import configure_drone
+from tools.lighthouse_demos.lighthouse_dual_x_step import status
 from src.safety.geofence import Point3
 from src.safety.geofence import load_box
 

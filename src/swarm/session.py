@@ -112,7 +112,11 @@ class SwarmSessionRunner:
         health = [_reject_missing_pose(item) for item in health]
         # TODO: Re-enable for demos with physical no-fly zones around the server.
         # health = _reject_no_fly_zone_launches(health, spec)
-        minimum_size = minimum_viable_swarm_size(spec.swarm_size, spec.pattern)
+        minimum_size = minimum_viable_swarm_size(
+            spec.swarm_size,
+            spec.pattern,
+            require_full_swarm=spec.require_full_swarm,
+        )
         initial_selection = select_healthiest_swarm(health, spec.swarm_size, minimum_size=minimum_size)
         if not initial_selection.ready:
             return DeployResult(mission_id, MissionState.REFUSED, initial_selection, None, message="insufficient_healthy_drones")
@@ -263,10 +267,10 @@ def _plan_to_dict(plan: SwarmPlan | None) -> dict | None:
     }
 
 
-def minimum_viable_swarm_size(requested_size: int, pattern: str = "") -> int:
+def minimum_viable_swarm_size(requested_size: int, pattern: str = "", *, require_full_swarm: bool = False) -> int:
     """Allow fixed-pair fallback, otherwise require 3 drones and majority."""
 
-    if pattern == "crazy_pinwheel":
+    if require_full_swarm or pattern == "crazy_pinwheel":
         return requested_size
     if requested_size <= 2:
         return 1

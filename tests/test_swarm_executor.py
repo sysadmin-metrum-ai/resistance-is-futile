@@ -386,6 +386,30 @@ def test_executor_replans_four_drone_mission_when_one_connect_fails(monkeypatch)
     ]
 
 
+def test_executor_refuses_degraded_connect_when_full_swarm_required(monkeypatch):
+    monkeypatch.setattr("src.swarm.executor.time.sleep", lambda _seconds: None)
+    connector = FakeConnector(fail_connect={"e"})
+    executor = SwarmExecutor(connector=connector)
+    spec = MissionSpec(swarm_size=5, pattern="hold", dry_run=False, arm=True, require_full_swarm=True, no_fly_zone_paths=())
+    plan = build_swarm_plan(
+        {
+            "a": (0.0, -0.9, 0.55),
+            "b": (0.0, -0.45, 0.55),
+            "c": (0.0, 0.0, 0.55),
+            "d": (0.0, 0.45, 0.55),
+            "e": (0.0, 0.9, 0.55),
+        },
+        spec,
+    )
+
+    try:
+        executor.execute(plan, arm=True)
+    except RuntimeError as exc:
+        assert "connect_quorum_lost" in str(exc)
+    else:
+        raise AssertionError("expected full-swarm takeoff to be refused")
+
+
 def test_executor_replans_three_drone_mission_when_two_configures_fail(monkeypatch):
     monkeypatch.setattr("src.swarm.executor.time.sleep", lambda _seconds: None)
     connector = FakeConnector(fail_config={"d", "e"})

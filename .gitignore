@@ -78,6 +78,7 @@ out/
 *.orig
 
 # Database
+data/
 *.db
 *.sqlite
 *.sqlite3

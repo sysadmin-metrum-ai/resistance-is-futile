@@ -10,6 +10,12 @@ import subprocess
 import time
 import os
 import signal
+from pathlib import Path
+
+pytestmark = pytest.mark.skipif(
+    os.environ.get("RUN_INTEGRATION_TESTS") != "1",
+    reason="set RUN_INTEGRATION_TESTS=1 to run API integration tests",
+)
 
 # Test configuration
 API_BASE_URL = "http://localhost:8000"
@@ -23,8 +29,11 @@ class TestIntegration:
     @pytest.fixture(scope="class")
     def api_server(self):
         """Start the API server for testing."""
-        # Change to project directory
-        project_dir = "/home/cgadgil/src/resistance-is-futile"
+        if os.environ.get("API_SERVER_MANAGED_EXTERNALLY") == "1":
+            yield None
+            return
+
+        project_dir = Path(__file__).resolve().parents[1]
 
         # Start the server
         env = os.environ.copy()
@@ -99,7 +108,7 @@ class TestIntegration:
             ],
             "duration_seconds": 60,
         }
-        response = await async_client.post("/missions", json=mission_data)
+        response = await async_client.post("/api/missions", json=mission_data)
         # Without PostgREST, this returns 500, but we verify the endpoint is reachable
         assert response.status_code in (200, 201, 500, 503), (
             f"Expected 200/201/500/503, got {response.status_code}: {response.text}"
@@ -114,7 +123,7 @@ class TestIntegration:
         # Just try to get missions list (will fail without PostgREST)
         # This verifies the endpoint is reachable
         try:
-            get_response = await async_client.get("/missions", timeout=5.0)
+            get_response = await async_client.get("/api/missions", timeout=5.0)
             # Without PostgREST, this returns 500, but endpoint is reachable
             assert get_response.status_code in (200, 500), (
                 f"Expected 200/500, got {get_response.status_code}: {get_response.text}"
@@ -125,7 +134,7 @@ class TestIntegration:
 
     def test_get_drones_lists_drones(self, client):
         """UAT 4: GET /drones returns list of drones with state, battery, connection."""
-        response = client.get("/drones")
+        response = client.get("/api/drones")
         # Without PostgREST, this returns 500, but endpoint is reachable
         assert response.status_code in (200, 500), (
             f"Expected 200/500, got {response.status_code}: {response.text}"
@@ -133,13 +142,13 @@ class TestIntegration:
 
     def test_post_safety_kill_switch(self, client):
         """UAT 5: POST /safety/kill-switch returns 200."""
-        response = client.post("/safety/kill-switch", json={"emergency": True})
+        response = client.post("/api/safety/kill-switch", json={"emergency": True})
         assert response.status_code == 200, f"Kill switch failed: {response.text}"
 
     def test_health_check_endpoint(self, client):
         """UAT 6: GET /safety/health-check/{id} returns battery and connection status."""
         # Use an integer drone_id as per API schema
-        response = client.get("/safety/health-check/1")
+        response = client.get("/api/safety/health-check/1")
         # Without PostgREST or real drones, this returns 404, but endpoint is reachable
         assert response.status_code in (200, 404, 500), (
             f"Health check failed: {response.text}"
@@ -153,7 +162,7 @@ class TestIntegration:
     def test_fleets_endpoints(self, client):
         """Test fleet management endpoints."""
         # List fleets
-        response = client.get("/fleets")
+        response = client.get("/api/fleets")
         assert response.status_code == 200, f"List fleets failed: {response.text}"
         data = response.json()
         assert "fleets" in data
@@ -161,19 +170,19 @@ class TestIntegration:
         # Get first fleet details
         if data["fleets"]:
             fleet_id = data["fleets"][0]["id"]
-            response = client.get(f"/fleets/{fleet_id}")
+            response = client.get(f"/api/fleets/{fleet_id}")
             assert response.status_code == 200, f"Get fleet failed: {response.text}"
 
     def test_anchors_endpoints(self, client):
         """Test anchor management endpoints."""
         # List anchors
-        response = client.get("/anchors")
+        response = client.get("/api/anchors")
         assert response.status_code == 200, f"List anchors failed: {response.text}"
         data = response.json()
         assert "anchors" in data
 
         # Get system status
-        response = client.get("/anchors/system-status")
+        response = client.get("/api/anchors/system-status")
         assert response.status_code == 200, f"System status failed: {response.text}"
         data = response.json()
         assert "system_ready" in data

@@ -43,7 +43,7 @@ class EmergencyExecutor(FakeExecutor):
 
 
 def test_swarm_request_default_minimum_separation_matches_demo_clearance():
-    assert swarm_route.SwarmDeployRequest().min_separation_m == DEFAULT_MIN_SEPARATION_M == 0.20
+    assert swarm_route.SwarmDeployRequest().min_separation_m == DEFAULT_MIN_SEPARATION_M == 0.10
 
 
 class CapturingRunner(SwarmSessionRunner):
@@ -216,6 +216,7 @@ def test_dtw_drone_trigger_prepares_then_launches_swarm(tmp_path, monkeypatch):
         assert captured_specs[0].swarm_size == DEFAULT_SWARM_SIZE
         assert captured_specs[0].health_timeout_s == 40.0
         assert captured_specs[0].max_concurrent_checks == 5
+        assert captured_specs[0].require_full_swarm is True
         assert captured_specs[0].allowed_uris == ()
         assert captured_specs[0].pattern == "captured_path"
         assert captured_specs[0].captured_path == str(captured_path)
@@ -607,5 +608,5 @@ def test_swarm_health_endpoint_defaults_to_configured_fleet(monkeypatch):
 
     assert response.status_code == 200
     assert tuple(captured) == swarm_route.DEFAULT_DISCOVERY_FLEET
-    assert len(response.json()["results"]) == 3
+    assert len(response.json()["results"]) == len(swarm_route.DEFAULT_DISCOVERY_FLEET)
 

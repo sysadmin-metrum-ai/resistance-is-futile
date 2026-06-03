@@ -1,9 +1,9 @@
 """Minimal Lighthouse takeoff/land check.
 
 Usage:
-    uv run python lighthouse_takeoff_land.py --uri radio://0/80/2M
-    uv run python lighthouse_takeoff_land.py --uri radio://0/80/2M --height 0.35 --hold 2
-    uv run python lighthouse_takeoff_land.py --uri radio://0/80/2M --height 0.80 --hold 5 --takeoff-time 3.5 --land-time 4.0s
+    uv run python -m tools.lighthouse_demos.lighthouse_takeoff_land.py --uri radio://0/80/2M
+    uv run python -m tools.lighthouse_demos.lighthouse_takeoff_land.py --uri radio://0/80/2M --height 0.35 --hold 2
+    uv run python -m tools.lighthouse_demos.lighthouse_takeoff_land.py --uri radio://0/80/2M --height 0.80 --hold 5 --takeoff-time 3.5 --land-time 4.0s
 """
 
 import argparse

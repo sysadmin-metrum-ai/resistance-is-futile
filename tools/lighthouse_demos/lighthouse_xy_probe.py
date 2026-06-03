@@ -3,8 +3,8 @@
 Sequence (all relative, same height): +X -> home, +Y -> home, -Y -> home, land.
 
 Usage:
-    uv run python lighthouse_xy_probe.py
-    uv run python lighthouse_xy_probe.py --uri radio://0/80/2M/E7E7E7E702 --step 0.15
+    uv run python -m tools.lighthouse_demos.lighthouse_xy_probe.py
+    uv run python -m tools.lighthouse_demos.lighthouse_xy_probe.py --uri radio://0/80/2M/E7E7E7E702 --step 0.15
 """
 
 import argparse
@@ -15,10 +15,10 @@ import cflib.crtp
 from cflib.crazyflie import Crazyflie
 from cflib.crazyflie.syncCrazyflie import SyncCrazyflie
 
-from lighthouse_x_step import arm_if_supported
-from lighthouse_x_step import reset_estimator
-from lighthouse_x_step import status
-from lighthouse_x_step import wait_for_estimator
+from tools.lighthouse_demos.lighthouse_x_step import arm_if_supported
+from tools.lighthouse_demos.lighthouse_x_step import reset_estimator
+from tools.lighthouse_demos.lighthouse_x_step import status
+from tools.lighthouse_demos.lighthouse_x_step import wait_for_estimator
 
 
 def leg(commander, msg: str, dx: float, dy: float, move_s: float, settle: float) -> None:

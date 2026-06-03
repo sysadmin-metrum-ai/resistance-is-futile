@@ -1,8 +1,8 @@
 """Two-Crazyflie Lighthouse relative X-step test.
 
 Usage:
-    uv run python lighthouse_dual_x_step.py
-    uv run python lighthouse_dual_x_step.py --uri-a radio://0/80/2M/E7E7E7E701 --uri-b radio://0/80/2M/E7E7E7E702
+    uv run python -m tools.lighthouse_demos.lighthouse_dual_x_step.py
+    uv run python -m tools.lighthouse_demos.lighthouse_dual_x_step.py --uri-a radio://0/80/2M/E7E7E7E701 --uri-b radio://0/80/2M/E7E7E7E702
 """
 
 import argparse

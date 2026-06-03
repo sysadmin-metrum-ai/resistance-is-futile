@@ -38,9 +38,9 @@ First air pose holds at pads, then expands/contracts on the ring (first move can
 
 Usage::
 
-    uv run python lighthouse_oct_ring_breathe.py
-    uv run python lighthouse_oct_ring_breathe.py --ring-cx 0.1 --ring-cy 0 --r-inner 0.72 --r-outer 0.95
-    uv run python lighthouse_oct_ring_breathe.py --rally-wave332 --row1-x -0.3 --row2-x 0.3 --row3-x 0.9
+    uv run python -m tools.lighthouse_demos.lighthouse_oct_ring_breathe.py
+    uv run python -m tools.lighthouse_demos.lighthouse_oct_ring_breathe.py --ring-cx 0.1 --ring-cy 0 --r-inner 0.72 --r-outer 0.95
+    uv run python -m tools.lighthouse_demos.lighthouse_oct_ring_breathe.py --rally-wave332 --row1-x -0.3 --row2-x 0.3 --row3-x 0.9
 """
 
 from __future__ import annotations
@@ -49,14 +49,14 @@ import argparse
 import math
 import sys
 
-from lighthouse_dual_x_step import status
-from lighthouse_oct_common import Vec3
-from lighthouse_oct_common import add_oct_timing_args
-from lighthouse_oct_common import add_oct_uri_args
-from lighthouse_oct_common import add_wave332_row_args
-from lighthouse_oct_common import build_wave332_homes
-from lighthouse_oct_common import collect_uris_from_args
-from lighthouse_oct_common import run_oct_mission
+from tools.lighthouse_demos.lighthouse_dual_x_step import status
+from tools.lighthouse_demos.lighthouse_oct_common import Vec3
+from tools.lighthouse_demos.lighthouse_oct_common import add_oct_timing_args
+from tools.lighthouse_demos.lighthouse_oct_common import add_oct_uri_args
+from tools.lighthouse_demos.lighthouse_oct_common import add_wave332_row_args
+from tools.lighthouse_demos.lighthouse_oct_common import build_wave332_homes
+from tools.lighthouse_demos.lighthouse_oct_common import collect_uris_from_args
+from tools.lighthouse_demos.lighthouse_oct_common import run_oct_mission
 
 
 def ring_positions(cx: float, cy: float, r: float, z: float) -> tuple[Vec3, ...]:
